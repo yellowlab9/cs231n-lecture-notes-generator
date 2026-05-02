@@ -6,9 +6,6 @@ import requests
 import yt_dlp
 import pytesseract
 from pdf2image import convert_from_path
-from sentence_transformers import SentenceTransformer, util
-from sklearn.svm import OneClassSVM
-from sklearn.preprocessing import StandardScaler
 import numpy as np
 import sys
 
@@ -23,37 +20,16 @@ def log(msg, always=False):
         print(f"[LOG] {msg}")
         sys.stdout.flush() 
 
-def get_bottom_boundary_features(image, embed_model):
-    """
-    Extracts OCR text ONLY from the bottom boundary.
-    Returns the feature vector and the full dictionary of boundary strings for logging.
-    """
+def get_boundary_vocabulary(image):
     h, w, _ = image.shape
     thick = 80 
-    
-    # Still capture all for logging, but we will only 'use' Bottom for the SVM
-    borders = {
-        "TOP":    image[0:thick, 0:w],
-        "BOTTOM": image[h-thick:h, 0:w],
-        "LEFT":   image[0:h, 0:thick],
-        "RIGHT":  image[0:h, w-thick:w]
-    }
-    
-    border_results = {}
-    for side, img in borders.items():
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-        text = pytesseract.image_to_string(thresh).strip()
-        border_results[side] = text.replace('\n', ' ').strip()
-
-    # Feature vector is now ONLY the BOTTOM embedding (384 dims)
-    bottom_text = border_results["BOTTOM"]
-    if len(bottom_text) > 2:
-        total_feat = embed_model.encode(bottom_text)
-    else:
-        total_feat = np.zeros(384)
-        
-    return total_feat, border_results
+    footer_strip = image[h-thick:h, 0:w]
+    gray = cv2.cvtColor(footer_strip, cv2.COLOR_BGR2GRAY)
+    _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+    text = pytesseract.image_to_string(thresh).strip()
+    clean_text = text.replace('\n', ' ').strip()
+    words = set(re.findall(r'\b\w{3,}\b', clean_text.lower()))
+    return words, clean_text
 
 def download_pdf(pdf_source):
     pdf_path = pdf_source.split("/")[-1] if pdf_source.startswith("http") else pdf_source
@@ -79,6 +55,7 @@ def main():
     parser.add_argument("--display", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("--debug", action="store_true")
+    parser.add_argument("--scene_threshold", type=float, default=25.0)
     args = parser.parse_args()
 
     global VERBOSE
@@ -87,55 +64,56 @@ def main():
     
     pdf_path = download_pdf(args.pdf)
     video_path = download_media(args.video_url)
-    embed_model = SentenceTransformer('all-MiniLM-L6-v2')
 
-    log("Training SVM (BOTTOM-ONLY Mode)...", always=True)
+    log("Building Global Vocabulary from all PDF footers...", always=True)
     pages = convert_from_path(pdf_path, poppler_path=POPPLER_PATH)
-    X_train_raw, pdf_signatures = [], []
+    pdf_vocab_per_page = []
+    global_pdf_vocabulary = set() 
     
     for i, pg in enumerate(pages):
         cv_img = cv2.cvtColor(np.array(pg), cv2.COLOR_RGB2BGR)
-        feat, texts = get_bottom_boundary_features(cv_img, embed_model)
-        X_train_raw.append(feat)
-        pdf_signatures.append(texts["BOTTOM"]) # Match based on footer
-        
-        log(f"--- Indexing PDF Page {i} ---", always=True)
-        for side, txt in texts.items():
-            log(f"  {side}: {txt[:70]}", always=True)
-    
-    scaler = StandardScaler()
-    X_train = scaler.fit_transform(X_train_raw)
-    svm = OneClassSVM(kernel='rbf', nu=0.08, gamma='scale').fit(X_train)
-    template_embeddings = embed_model.encode(pdf_signatures)
+        vocab_set, _ = get_boundary_vocabulary(cv_img)
+        pdf_vocab_per_page.append(vocab_set)
+        global_pdf_vocabulary.update(vocab_set) 
+
+    log(f"Global vocabulary contains {len(global_pdf_vocabulary)} unique words.", always=True)
 
     cap = cv2.VideoCapture(video_path)
     fps, found_slides = cap.get(cv2.CAP_PROP_FPS), set()
+    prev_frame_gray = None
     
-    log(f"Scanning: {video_path}", always=True)
+    log(f"Scanning via Vocabulary Overlap...", always=True)
     frame_idx = 0
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret: break
         
-        if frame_idx % int(fps * 4) == 0:
-            time_sec = int(frame_idx / fps)
-            feat, current_texts = get_bottom_boundary_features(frame, embed_model)
-            X_test = scaler.transform(feat.reshape(1, -1))
-            
-            if VERBOSE:
-                log(f"Check {time_sec}s | BOTTOM: {current_texts['BOTTOM'][:40]}")
-            
-            if svm.predict(X_test)[0] == 1:
-                bottom_txt = current_texts["BOTTOM"]
-                if len(bottom_txt) > 8:
-                    scores = util.cos_sim(embed_model.encode(bottom_txt), template_embeddings)[0]
-                    best_match = int(np.argmax(scores.cpu().numpy()))
+        current_frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        if prev_frame_gray is not None:
+            frame_diff = cv2.absdiff(current_frame_gray, prev_frame_gray)
+            if np.mean(frame_diff) > args.scene_threshold:
+                time_sec = int(frame_idx / fps)
+                video_vocab, _ = get_boundary_vocabulary(frame)
+                
+                # --- NEW LOGGING: Video Vocabulary and Overlap ---
+                global_overlap = video_vocab.intersection(global_pdf_vocabulary)
+                
+                if VERBOSE:
+                    log(f"Scene Change at {time_sec}s:")
+                    log(f"  Video Vocab: {list(video_vocab)}")
+                    log(f"  Global Overlap: {list(global_overlap)}")
+
+                if len(global_overlap) >= 2:
+                    overlaps = [len(video_vocab.intersection(p_vocab)) for p_vocab in pdf_vocab_per_page]
+                    best_match = int(np.argmax(overlaps))
                     
-                    if best_match not in found_slides and scores[best_match] > 0.30:
+                    if best_match not in found_slides and overlaps[best_match] >= 2:
                         cv2.imwrite(f"slides/slide_{best_match}.jpg", frame)
                         found_slides.add(best_match)
-                        log(f"  --> [MATCH] PDF Page {best_match} via Footer at {time_sec}s", always=True)
+                        log(f"  --> [MATCH] PDF Page {best_match} ({overlaps[best_match]} words) at {time_sec}s", always=True)
+                        log(f"      Words: {video_vocab.intersection(pdf_vocab_per_page[best_match])}", always=True)
 
+        prev_frame_gray = current_frame_gray
         frame_idx += 1
         if args.display and cv2.waitKey(1) & 0xFF == ord('q'): break
 
