@@ -40,12 +40,11 @@ def clean_content(gray_img, min_height=0):
 
     return thresh
 
-def get_footer_vocabulary(image, thick=80):
+def get_footer_vocabulary(gray_image, thick=80):
     """Extracts words strictly from the bottom 80 pixels."""
-    h, w, _ = image.shape
-    footer_strip = image[h-thick:h, 0:w]
-    gray = cv2.cvtColor(footer_strip, cv2.COLOR_BGR2GRAY)
-    thresh = clean_content(gray)
+    h, w = gray_image.shape
+    footer_strip = gray_image[h-thick:h, 0:w]
+    thresh = clean_content(footer_strip)
     text = pytesseract.image_to_string(thresh).strip()
     # Capture words 3+ chars long, ignoring case
     words = set(re.findall(r'\b\w{3,}\b', text.lower()))
@@ -60,10 +59,9 @@ def get_footer_color_distribution(image, thick=80):
     cv2.normalize(hist, hist, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
     return hist.flatten()
 
-def get_full_frame_ocr(image):
+def get_full_frame_ocr(gray_image):
     """Performs OCR on the entire image for content comparison."""
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    thresh = clean_content(gray)
+    thresh = clean_content(gray_image)
     text = pytesseract.image_to_string(thresh).strip()
     words = re.findall(r'\b\w{6,}\b', text.lower())
     return ' '.join(words)
@@ -112,12 +110,12 @@ def main():
 
     # 1. Build the Global Vocabulary (One-pass check)
     log("Building Global Vocabulary from PDF footers...", always=True)
-    pages = convert_from_path(pdf_path, poppler_path=POPPLER_PATH)
+    pages = convert_from_path(pdf_path, poppler_path=POPPLER_PATH, thread_count=os.cpu_count() or 4)
     global_pdf_vocabulary = set() 
     
     for i, pg in enumerate(pages):
-        cv_img = cv2.cvtColor(np.array(pg), cv2.COLOR_RGB2BGR)
-        vocab_set, _ = get_footer_vocabulary(cv_img)
+        cv_img_gray = cv2.cvtColor(np.array(pg), cv2.COLOR_RGB2GRAY)
+        vocab_set, _ = get_footer_vocabulary(cv_img_gray)
         global_pdf_vocabulary.update(vocab_set) 
         log(f"--- Indexed PDF Page {i} ---", always=True)
 
@@ -159,11 +157,12 @@ def main():
         if not ret: break
         
         frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        time_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
-        frame_idx = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
+        
+        frame_idx += 1
+        time_ms = (frame_idx * 1000.0) / fps
  
         if len(frame_buffer) >= qLen:
-            frame_diff = np.mean(cv2.absdiff(frame_gray, frame_buffer[-qCenter][1]))
+            frame_diff = cv2.mean(cv2.absdiff(frame_gray, frame_buffer[-qCenter][1]))[0]
         else:
             frame_diff = 0
 
@@ -194,9 +193,9 @@ def main():
 
                 slide_diff = 255.
                 if prev_slide_gray  is not None:
-                    slide_diff = np.mean(cv2.absdiff(prev_slide_gray, frame_buffer[-qCenter][1]))
+                    slide_diff = cv2.mean(cv2.absdiff(prev_slide_gray, frame_buffer[-qCenter][1]))[0]
 
-                video_vocab, _ = get_footer_vocabulary(current_anchor_frame)
+                video_vocab, _ = get_footer_vocabulary(current_anchor_frame_gray)
                 
                 # Filter video words against the Global PDF set
                 global_overlap = video_vocab.intersection(global_pdf_vocabulary)
