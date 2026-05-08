@@ -100,7 +100,10 @@ def get_full_frame_ocr(gray_image):
     return ' '.join(words)
 
 def compute_frame_diff(frame_gray, anchor_frame_gray):
-    return cv2.mean(cv2.absdiff(frame_gray, anchor_frame_gray))[0]
+   # Form feature vectors (length: width + height) from column and row averages
+    frame_feat = np.concatenate([np.mean(frame_gray, axis=0), np.mean(frame_gray, axis=1)])
+    anchor_feat = np.concatenate([np.mean(anchor_frame_gray, axis=0), np.mean(anchor_frame_gray, axis=1)])
+    return float(np.mean(np.abs(frame_feat - anchor_feat)))
 
 def download_pdf(pdf_source):
     pdf_path = pdf_source.split("/")[-1] if pdf_source.startswith("http") else pdf_source
@@ -136,8 +139,12 @@ def main():
     VERBOSE = args.verbose or args.debug
 
     pdf_name = args.pdf.split("/")[-1] if args.pdf.startswith("http") else args.pdf
-    LOG_FILE = pdf_name.replace('.pdf', '.log')
+    LOG_FILE = pdf_name.replace('.pdf', '_log.txt')
     open(LOG_FILE, 'w', encoding='utf-8').close()  # initialize and clear previous run's log file
+    
+    CSV_FILE = pdf_name.replace('.pdf', '_ts.csv')
+    with open(CSV_FILE, 'w', encoding='utf-8') as f:
+        f.write("img_path,slide_idx,frame_idx,time_stamp\n") # CSV Header
 
     if not os.path.exists("slides"): os.makedirs("slides")
     
@@ -211,13 +218,13 @@ def main():
 
     frame_buffer = deque(maxlen=qLen)
     last_captured_text = "" 
-    slide_count = 0
+    slide_idx = 0
     prev_slide_gray = None
 
     log(f"Scanning via Global Vocabulary Match (2-word minimum)", always=True)
 
     prev_slides_text  = set()
-    frame_idx = 0
+    frame_idx = -1
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret: break
@@ -271,7 +278,7 @@ def main():
                     global_overlap = video_vocab.intersection(global_pdf_vocabulary)
                 
                     if len(global_overlap) >= 2:
-                        log(f"  --> [NEW SLIDE CANDIDATE] slide {slide_count} with threshold {slide_diff:.2f}/{args.scene_threshold:.2f} detected at frame {frame_idx} time {time_stamp}", always=True)
+                        log(f"  --> [NEW SLIDE CANDIDATE] slide {slide_idx} with threshold {slide_diff:.2f}/{args.scene_threshold:.2f} detected at frame {frame_idx} time {time_stamp}", always=True)
 
     #                   current_full_text = get_full_frame_ocr(current_anchor_frame)
                         
@@ -280,17 +287,20 @@ def main():
                             prev_slide_gray = current_anchor_frame_gray.copy()
     #                        prev_slides_text.add(current_full_text)
 
-                            slide_count += 1
+                            slide_idx += 1
                             clean_ts = time_stamp.replace(':', '-')
-                            img_path = f"slides/slide_{slide_count}_{frame_idx}_{clean_ts}.jpg"
+                            img_path = f"slides/slide_{slide_idx}_{frame_idx}_{clean_ts}.jpg"
                             cv2.imwrite(img_path, current_anchor_frame)
                             
-                            log(f"  --> [NEW SLIDE] slide {slide_count} detected at frame {frame_idx} time {time_stamp}", always=True)
+                            with open(CSV_FILE, 'a', encoding='utf-8') as f:
+                                f.write(f"{img_path},{slide_idx},{frame_idx},{time_stamp}\n")
+                            
+                            log(f"  --> [NEW SLIDE] slide {slide_idx} detected at frame {frame_idx} time {time_stamp}", always=True)
     #                        log(f"      Current text: {current_full_text}", always=True)
 
                             if args.display:
                                 disp = frame.copy()
-                                cv2.putText(disp, f"slide {slide_count} frame {frame_idx} {time_stamp}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 4)
+                                cv2.putText(disp, f"slide {slide_idx} frame {frame_idx} {time_stamp}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 4)
                                 cv2.imshow("Slide Monitor", disp)
                                 cv2.waitKey(500) # Short wait
 
