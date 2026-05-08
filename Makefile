@@ -23,6 +23,7 @@ notes:
 	@echo "Video ID: $(VIDEO_ID)"
 	@echo "Model: $(MODEL)"
 	@echo "=========================================================="
+	make clean_slides
 	python generate_notes.py --video_url $(VIDEO_URL) --pdf $(PDF_URL) --model $(MODEL) $(VERBOSE) $(DISPLAY) $(DEBUG)
 
 # Clean up local environment
@@ -31,3 +32,8 @@ clean:
 	rm -rf slides/
 	rm -f lecture*.mp4 lecture*.vtt lecture*.srt
 	rm -f lecture*.pdf lecture_slides.pdf semantic_study_notes.md
+	
+clean_slides:
+	@echo "Cleaning up slides..."
+	mkdir -p slides
+	rm -f slides/*
