@@ -34,17 +34,49 @@ def log(msg, always=False):
             with open(LOG_FILE, 'a', encoding='utf-8') as f:
                 f.write(log_msg + '\n')
 
-def clean_content(gray_img, min_height=0):
+def clean_dark_content(gray_img, min_height=0):
     gray_img = cv2.GaussianBlur(gray_img, (3, 3), 0)
     _, thresh = cv2.threshold(gray_img, 150, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
-
     return thresh
+
+def clean_light_content(gray_img, min_height=0):
+    gray_img = cv2.GaussianBlur(gray_img, (3, 3), 0)
+    _, thresh = cv2.threshold(gray_img, 150, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
+    return thresh
+
+def detect_footer_height(gray_img, default_thick=80, max_search_ratio=0.15):
+    """
+    Dynamically detects the height of the footer in a slide.
+    Looks for a horizontal line or the highest content in the bottom section.
+    """
+    h, w = gray_img.shape
+    search_h = int(h * max_search_ratio)
+    bottom_strip = gray_img[h-search_h:h, :]
+    
+    # 1. Try to find a horizontal separator line using edge detection
+    edges = cv2.Canny(bottom_strip, 50, 150)
+    row_sums = np.sum(edges, axis=1) / 255.0
+    
+    # If a row has edge pixels covering >25% of the slide width, it's likely a line
+    line_indices = np.where(row_sums > (w * 0.25))[0]
+    if len(line_indices) > 0:
+        return search_h - line_indices[0] + 5  # Add 5px padding
+        
+    # 2. If no line, find the highest text/content bounding box
+    thresh = clean_light_content(bottom_strip)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if contours:
+        valid_y = [cv2.boundingRect(c)[1] for c in contours if cv2.boundingRect(c)[2] > 10 and cv2.boundingRect(c)[3] > 10]
+        if valid_y:
+            return search_h - min(valid_y) + 10
+            
+    return default_thick
 
 def get_footer_vocabulary(gray_image, thick=80):
     """Extracts words strictly from the bottom 80 pixels."""
     h, w = gray_image.shape
     footer_strip = gray_image[h-thick:h, 0:w]
-    thresh = clean_content(footer_strip)
+    thresh = clean_light_content(footer_strip)
     text = pytesseract.image_to_string(thresh).strip()
     # Capture words 3+ chars long, ignoring case
     words = set(re.findall(r'\b\w{3,}\b', text.lower()))
@@ -61,7 +93,7 @@ def get_footer_color_distribution(image, thick=80):
 
 def get_full_frame_ocr(gray_image):
     """Performs OCR on the entire image for content comparison."""
-    thresh = clean_content(gray_image)
+    thresh = clean_light_content(gray_image)
     text = pytesseract.image_to_string(thresh).strip()
     words = re.findall(r'\b\w{6,}\b', text.lower())
     return ' '.join(words)
@@ -113,15 +145,24 @@ def main():
     pages = convert_from_path(pdf_path, poppler_path=POPPLER_PATH, thread_count=os.cpu_count() or 4)
     global_pdf_vocabulary = set() 
     
+    dynamic_footer_height = 80
+    pdf_h = 1080
+    if pages:
+        first_page_gray = cv2.cvtColor(np.array(pages[0]), cv2.COLOR_RGB2GRAY)
+        pdf_h = first_page_gray.shape[0]
+        dynamic_footer_height = detect_footer_height(first_page_gray)
+        log(f"Dynamically detected PDF footer height: {dynamic_footer_height} pixels", always=True)
+
     for i, pg in enumerate(pages):
         cv_img_gray = cv2.cvtColor(np.array(pg), cv2.COLOR_RGB2GRAY)
-        vocab_set, _ = get_footer_vocabulary(cv_img_gray)
+        vocab_set, _ = get_footer_vocabulary(cv_img_gray, thick=dynamic_footer_height)
         global_pdf_vocabulary.update(vocab_set) 
         log(f"--- Indexed PDF Page {i} ---", always=True)
 
     log(f"Global vocabulary size: {len(global_pdf_vocabulary)} words.", always=True)
 
-    cap = cv2.VideoCapture(video_path)
+    # Request Hardware Acceleration (GPU decoding) for video reading if available
+    cap = cv2.VideoCapture(video_path, cv2.CAP_ANY, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY])
 
     if cap.isOpened():
         fps = cap.get(cv2.CAP_PROP_FPS)
@@ -157,6 +198,7 @@ def main():
         if not ret: break
         
         frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        frame_gray = cv2.resize(frame_gray, (0, 0), fx=0.5, fy=0.5)
         
         frame_idx += 1
         time_ms = (frame_idx * 1000.0) / fps
@@ -195,34 +237,37 @@ def main():
                 if prev_slide_gray  is not None:
                     slide_diff = cv2.mean(cv2.absdiff(prev_slide_gray, frame_buffer[-qCenter][1]))[0]
 
-                video_vocab, _ = get_footer_vocabulary(current_anchor_frame_gray)
+                if slide_diff > args.scene_threshold:
+                    frame_h = current_anchor_frame_gray.shape[0]
+                    video_thick = max(10, int(dynamic_footer_height * (frame_h / pdf_h)))
+                    video_vocab, _ = get_footer_vocabulary(current_anchor_frame_gray, thick=video_thick)
                 
-                # Filter video words against the Global PDF set
-                global_overlap = video_vocab.intersection(global_pdf_vocabulary)
+                    # Filter video words against the Global PDF set
+                    global_overlap = video_vocab.intersection(global_pdf_vocabulary)
                 
-                if (len(global_overlap) >= 2) and (slide_diff > args.scene_threshold):
-                    log(f"  --> [NEW SLIDE CANDIDATE] slide {slide_count} with threshold {slide_diff:.2f}/{args.scene_threshold:.2f} detected at frame {frame_idx} time {time_stamp}", always=True)
+                    if len(global_overlap) >= 2:
+                        log(f"  --> [NEW SLIDE CANDIDATE] slide {slide_count} with threshold {slide_diff:.2f}/{args.scene_threshold:.2f} detected at frame {frame_idx} time {time_stamp}", always=True)
 
-#                   current_full_text = get_full_frame_ocr(current_anchor_frame)
-                    
-#                   if current_full_text not in prev_slides_text :
-                    if frame_idx % 2 == 1:
-                        prev_slide_gray = current_anchor_frame_gray.copy()
-#                        prev_slides_text.add(current_full_text)
-
-                        slide_count += 1
-                        clean_ts = time_stamp.replace(':', '-')
-                        img_path = f"slides/slide_{slide_count}_{frame_idx}_{clean_ts}.jpg"
-                        cv2.imwrite(img_path, current_anchor_frame)
+    #                   current_full_text = get_full_frame_ocr(current_anchor_frame)
                         
-                        log(f"  --> [NEW SLIDE] slide {slide_count} detected at frame {frame_idx} time {time_stamp}", always=True)
-#                        log(f"      Current text: {current_full_text}", always=True)
+    #                   if current_full_text not in prev_slides_text :
+                        if frame_idx % 2 == 1:
+                            prev_slide_gray = current_anchor_frame_gray.copy()
+    #                        prev_slides_text.add(current_full_text)
 
-                        if args.display:
-                            disp = frame.copy()
-                            cv2.putText(disp, f"slide {slide_count} frame {frame_idx} {time_stamp}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 4)
-                            cv2.imshow("Slide Monitor", disp)
-                            cv2.waitKey(500) # Short wait
+                            slide_count += 1
+                            clean_ts = time_stamp.replace(':', '-')
+                            img_path = f"slides/slide_{slide_count}_{frame_idx}_{clean_ts}.jpg"
+                            cv2.imwrite(img_path, current_anchor_frame)
+                            
+                            log(f"  --> [NEW SLIDE] slide {slide_count} detected at frame {frame_idx} time {time_stamp}", always=True)
+    #                        log(f"      Current text: {current_full_text}", always=True)
+
+                            if args.display:
+                                disp = frame.copy()
+                                cv2.putText(disp, f"slide {slide_count} frame {frame_idx} {time_stamp}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 4)
+                                cv2.imshow("Slide Monitor", disp)
+                                cv2.waitKey(500) # Short wait
 
  
         if args.display and cv2.waitKey(1) & 0xFF == ord('q'): break
