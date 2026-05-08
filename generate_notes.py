@@ -8,6 +8,7 @@ import yt_dlp
 import pytesseract
 from pdf2image import convert_from_path
 import numpy as np
+import scipy.stats
 import sys
 
 # --- WINDOWS CONFIGURATION ---
@@ -124,7 +125,7 @@ def main():
     parser.add_argument("--display", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("--debug", action="store_true")
-    parser.add_argument("--scene_threshold", type=float, default=2.0)
+    parser.add_argument("--scene_threshold", type=float, default=1.0)
     parser.add_argument("--maxlen", type=int, default=5)
     args = parser.parse_args()
 
@@ -143,21 +144,42 @@ def main():
     # 1. Build the Global Vocabulary (One-pass check)
     log("Building Global Vocabulary from PDF footers...", always=True)
     pages = convert_from_path(pdf_path, poppler_path=POPPLER_PATH, thread_count=os.cpu_count() or 4)
+
+    log("Calculating the mode of every pixel across PDF pages...", always=True)
+    mode_image = None
+    try:
+        pages_array = np.stack([np.array(pg) for pg in pages])
+        mode_result = scipy.stats.mode(pages_array, axis=0)
+        mode_image = mode_result[0]
+        if getattr(mode_image, 'ndim', 0) == 4 and mode_image.shape[0] == 1:
+            mode_image = mode_image[0]
+        mode_image = mode_image.astype(np.uint8)
+        cv2.imwrite("pdf_mode_background.png", cv2.cvtColor(mode_image, cv2.COLOR_RGB2BGR))
+        log("Saved the mode of PDF pages to 'pdf_mode_background.png'", always=True)
+    except Exception as e:
+        log(f"Failed to calculate pixel mode: {e}", always=True)
+
     global_pdf_vocabulary = set() 
-    
+
     dynamic_footer_height = 80
     pdf_h = 1080
-    if pages:
+    if mode_image is not None:
+        mode_image_gray = cv2.cvtColor(mode_image, cv2.COLOR_RGB2GRAY)
+        pdf_h = mode_image_gray.shape[0]
+        dynamic_footer_height = detect_footer_height(mode_image_gray)
+        log(f"Dynamically detected PDF footer height from mode image: {dynamic_footer_height}/{pdf_h} pixels", always=True)
+        vocab_set, _ = get_footer_vocabulary(mode_image_gray, thick=dynamic_footer_height)
+        global_pdf_vocabulary.update(vocab_set)
+    elif pages:
         first_page_gray = cv2.cvtColor(np.array(pages[0]), cv2.COLOR_RGB2GRAY)
         pdf_h = first_page_gray.shape[0]
         dynamic_footer_height = detect_footer_height(first_page_gray)
-        log(f"Dynamically detected PDF footer height: {dynamic_footer_height} pixels", always=True)
-
-    for i, pg in enumerate(pages):
-        cv_img_gray = cv2.cvtColor(np.array(pg), cv2.COLOR_RGB2GRAY)
-        vocab_set, _ = get_footer_vocabulary(cv_img_gray, thick=dynamic_footer_height)
-        global_pdf_vocabulary.update(vocab_set) 
-        log(f"--- Indexed PDF Page {i} ---", always=True)
+        log(f"Dynamically detected PDF footer height: {dynamic_footer_height}/{pdf_h} pixels", always=True)
+        for i, pg in enumerate(pages):
+            cv_img_gray = cv2.cvtColor(np.array(pg), cv2.COLOR_RGB2GRAY)
+            vocab_set, _ = get_footer_vocabulary(cv_img_gray, thick=dynamic_footer_height)
+            global_pdf_vocabulary.update(vocab_set) 
+            log(f"--- Indexed PDF Page {i} ---", always=True)
 
     log(f"Global vocabulary size: {len(global_pdf_vocabulary)} words.", always=True)
 
