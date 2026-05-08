@@ -99,6 +99,9 @@ def get_full_frame_ocr(gray_image):
     words = re.findall(r'\b\w{6,}\b', text.lower())
     return ' '.join(words)
 
+def compute_frame_diff(frame_gray, anchor_frame_gray):
+    return cv2.mean(cv2.absdiff(frame_gray, anchor_frame_gray))[0]
+
 def download_pdf(pdf_source):
     pdf_path = pdf_source.split("/")[-1] if pdf_source.startswith("http") else pdf_source
     if os.path.exists(pdf_path): return pdf_path
@@ -226,7 +229,7 @@ def main():
         time_ms = (frame_idx * 1000.0) / fps
  
         if len(frame_buffer) >= qLen:
-            frame_diff = cv2.mean(cv2.absdiff(frame_gray, frame_buffer[-qCenter][1]))[0]
+            frame_diff = compute_frame_diff(frame_gray, frame_buffer[-qCenter][1])
         else:
             frame_diff = 0
 
@@ -257,7 +260,7 @@ def main():
 
                 slide_diff = 255.
                 if prev_slide_gray  is not None:
-                    slide_diff = cv2.mean(cv2.absdiff(prev_slide_gray, frame_buffer[-qCenter][1]))[0]
+                    slide_diff = compute_frame_diff(prev_slide_gray, frame_buffer[-qCenter][1])
 
                 if slide_diff > args.scene_threshold:
                     frame_h = current_anchor_frame_gray.shape[0]
