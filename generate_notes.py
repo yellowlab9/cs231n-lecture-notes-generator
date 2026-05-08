@@ -94,7 +94,7 @@ def main():
     parser.add_argument("--display", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("--debug", action="store_true")
-    parser.add_argument("--scene_threshold", type=float, default=8.0)
+    parser.add_argument("--scene_threshold", type=float, default=2.0)
     parser.add_argument("--maxlen", type=int, default=5)
     args = parser.parse_args()
 
@@ -143,7 +143,7 @@ def main():
         cv2.resizeWindow("Slide Monitor", 1280, 720)
 
     qLen = args.maxlen
-    qCenter = (qLen+1) // 2
+    qCenter = qLen // 2
 
     frame_buffer = deque(maxlen=qLen)
     last_captured_text = "" 
@@ -161,30 +161,34 @@ def main():
         frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         time_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
         frame_idx = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
-
+ 
         if len(frame_buffer) >= qLen:
-            frame_diff = np.mean(cv2.absdiff(frame_buffer[-1][1], frame_buffer[-qCenter][1]))
+            frame_diff = np.mean(cv2.absdiff(frame_gray, frame_buffer[-qCenter][1]))
         else:
             frame_diff = 0
+
         frame_buffer.append((frame, frame_gray, frame_idx, time_ms, frame_diff))
-   
+
         if len(frame_buffer) == args.maxlen:
-            prev_anchor_frame_gray = frame_buffer[-qLen][1]
-            current_anchor_frame_gray = frame_buffer[-qCenter][1]
-            next_anchor_frame_gray = frame_buffer[-1][1]
-            current_anchor_frame = frame_buffer[-qCenter][0]
+            current_anchor_frame      = frame_buffer[qCenter][0]
 
-            prev_anchor_diff = frame_buffer[-qLen][4]
-            next_anchor_diff = frame_buffer[-qCenter][4]
+            prev_anchor_frame_gray    = frame_buffer[0][1]
+            current_anchor_frame_gray = frame_buffer[qCenter][1]
+            next_anchor_frame_gray    = frame_buffer[-1][1]
 
-            time_ms = frame_buffer[-qCenter][3]
-            frame_idx = frame_buffer[-qCenter][2]
+            prev_anchor_diff = frame_buffer[qCenter][4]
+            next_anchor_diff = frame_buffer[-1][4]
+
+            time_ms = frame_buffer[qCenter][3]
+            frame_idx = frame_buffer[qCenter][2]
             time_stamp = format_time(time_ms)
             
             # detect scene changes
             if (prev_anchor_diff > args.scene_threshold) and (next_anchor_diff < args.scene_threshold):
-                if frame_idx % 2 == 0:
-                    continue
+                if args.display and frame_buffer:
+                    combined_buffer = cv2.hconcat([cv2.resize(f[0], (16*15, 9*15)) for f in frame_buffer])
+                    cv2.putText(combined_buffer, f"[SCENE CHANGE] detected ({prev_anchor_diff:.2f}, {next_anchor_diff:.2f}) at frame {frame_idx} time {time_stamp}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                    cv2.imshow("Frame Buffer", combined_buffer)
 
                 log(f"  --> [SCENE CHANGE] detected ({prev_anchor_diff:.2f}, {next_anchor_diff:.2f}) at frame {frame_idx} time {time_stamp}", always=True)
 
@@ -221,6 +225,7 @@ def main():
                             cv2.imshow("Slide Monitor", disp)
                             cv2.waitKey(500) # Short wait
 
+ 
         if args.display and cv2.waitKey(1) & 0xFF == ord('q'): break
 
     cap.release()
