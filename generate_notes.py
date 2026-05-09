@@ -131,7 +131,7 @@ def main():
     parser.add_argument("--display", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("--debug", action="store_true")
-    parser.add_argument("--scene_threshold", type=float, default=1.0)
+    parser.add_argument("--scene_threshold", type=float, default=0.5)
     parser.add_argument("--maxlen", type=int, default=5)
     args = parser.parse_args()
 
@@ -224,16 +224,15 @@ def main():
     log(f"Scanning via Global Vocabulary Match (2-word minimum)", always=True)
 
     prev_slides_text  = set()
-    frame_idx = -1
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret: break
         
         frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        frame_gray = cv2.resize(frame_gray, (0, 0), fx=0.5, fy=0.5)
+#        frame_gray = cv2.resize(frame_gray, (0, 0), fx=0.5, fy=0.5)
         
-        frame_idx += 1
-        time_ms = (frame_idx * 1000.0) / fps
+        frame_idx = int(cap.get(cv2.CAP_PROP_POS_FRAMES))        
+        time_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
  
         if len(frame_buffer) >= qLen:
             frame_diff = compute_frame_diff(frame_gray, frame_buffer[-qCenter][1])
