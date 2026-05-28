@@ -11,6 +11,14 @@ import numpy as np
 import scipy.stats
 import sys
 
+# --- WINDOWS DPI AWARENESS ---
+# Prevents OpenCV windows from being artificially blown up by Windows display scaling
+try:
+    import ctypes
+    ctypes.windll.shcore.SetProcessDpiAwareness(2) # PROCESS_PER_MONITOR_DPI_AWARE
+except Exception:
+    pass
+
 # --- WINDOWS CONFIGURATION ---
 pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 POPPLER_PATH = r'C:\Users\Cheung Auyeung\AppData\Local\Microsoft\WinGet\Packages\oschwartz10612.Poppler_Microsoft.Winget.Source_8wekyb3d8bbwe\poppler-25.07.0\Library\bin'
@@ -35,14 +43,14 @@ def log(msg, always=False):
             with open(LOG_FILE, 'a', encoding='utf-8') as f:
                 f.write(log_msg + '\n')
 
-def clean_dark_content(gray_img, min_height=0):
+def clean_dark_content(gray_img):
     gray_img = cv2.GaussianBlur(gray_img, (3, 3), 0)
     _, thresh = cv2.threshold(gray_img, 150, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
     return thresh
 
-def clean_light_content(gray_img, min_height=0):
+def clean_light_content(gray_img):
     gray_img = cv2.GaussianBlur(gray_img, (3, 3), 0)
-    _, thresh = cv2.threshold(gray_img, 150, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
+    _, thresh = cv2.threshold(gray_img, 150, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
     return thresh
 
 def detect_footer_height(gray_img, default_thick=80, max_search_ratio=0.15):
@@ -78,7 +86,7 @@ def get_footer_vocabulary(gray_image, thick=80):
     h, w = gray_image.shape
     footer_strip = gray_image[h-thick:h, 0:w]
     thresh = clean_light_content(footer_strip)
-    text = pytesseract.image_to_string(thresh).strip()
+    text = pytesseract.image_to_string(thresh, config='--oem 3 --psm 7').strip()
     # Capture words 3+ chars long, ignoring case
     words = set(re.findall(r'\b\w{3,}\b', text.lower()))
     return words, text.replace('\n', ' ').strip()
@@ -92,18 +100,36 @@ def get_footer_color_distribution(image, thick=80):
     cv2.normalize(hist, hist, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
     return hist.flatten()
 
-def get_full_frame_ocr(gray_image):
+def get_full_frame_ocr(gray_image, min_conf=60, min_height=10):
     """Performs OCR on the entire image for content comparison."""
     thresh = clean_light_content(gray_image)
-    text = pytesseract.image_to_string(thresh).strip()
-    words = re.findall(r'\b\w{6,}\b', text.lower())
-    return ' '.join(words)
+    data = pytesseract.image_to_data(thresh, output_type=pytesseract.Output.DICT, config='--oem 3 --psm 11')
+            
+    valid_words = []
+    bboxes = []
+    for i, word in enumerate(data['text']):
+        try:
+            conf = float(data['conf'][i])
+            height = int(data['height'][i])
+        except (ValueError, TypeError):
+            conf = 0.0
+            height = 0
+            
+        if conf > min_conf and height > min_height:
+            matched = re.findall(r'\b\w{3,}\b', str(word).lower())
+            if matched:
+                valid_words.extend(matched)
+                x, y, w, h = data['left'][i], data['top'][i], data['width'][i], data['height'][i]
+                for _ in matched:
+                    bboxes.append((x, y, w, h))
+            
+    return valid_words, bboxes
 
 def compute_frame_diff(frame_gray, anchor_frame_gray):
    # Form feature vectors (length: width + height) from column and row averages
     frame_feat = np.concatenate([np.mean(frame_gray, axis=0), np.mean(frame_gray, axis=1)])
     anchor_feat = np.concatenate([np.mean(anchor_frame_gray, axis=0), np.mean(anchor_frame_gray, axis=1)])
-    return float(np.mean(np.abs(frame_feat - anchor_feat)))
+    return float(np.median(np.abs(frame_feat - anchor_feat)))
 
 def download_pdf(pdf_source):
     pdf_path = pdf_source.split("/")[-1] if pdf_source.startswith("http") else pdf_source
@@ -131,7 +157,7 @@ def main():
     parser.add_argument("--display", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("--debug", action="store_true")
-    parser.add_argument("--scene_threshold", type=float, default=0.5)
+    parser.add_argument("--scene_threshold", type=float, default=10.0)
     parser.add_argument("--maxlen", type=int, default=5)
     args = parser.parse_args()
 
@@ -212,6 +238,7 @@ def main():
     if args.display:
         cv2.namedWindow("Slide Monitor", cv2.WINDOW_NORMAL)
         cv2.resizeWindow("Slide Monitor", 1280, 720)
+        cv2.namedWindow("Frame Monitor", cv2.WINDOW_AUTOSIZE)
 
     qLen = args.maxlen
     qCenter = qLen // 2
@@ -229,6 +256,7 @@ def main():
         if not ret: break
         
         frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
 #        frame_gray = cv2.resize(frame_gray, (0, 0), fx=0.5, fy=0.5)
         
         frame_idx = int(cap.get(cv2.CAP_PROP_POS_FRAMES))        
@@ -279,29 +307,47 @@ def main():
                     if len(global_overlap) >= 2:
                         log(f"  --> [NEW SLIDE CANDIDATE] slide {slide_idx} with threshold {slide_diff:.2f}/{args.scene_threshold:.2f} detected at frame {frame_idx} time {time_stamp}", always=True)
 
-    #                   current_full_text = get_full_frame_ocr(current_anchor_frame)
-                        
-    #                   if current_full_text not in prev_slides_text :
-                        if frame_idx % 2 == 1:
+                        current_valid_words, current_bboxes = get_full_frame_ocr(current_anchor_frame_gray)
+                        current_full_text = ' '.join(current_valid_words)
+
+                        disp = current_anchor_frame.copy()
+                        if args.display:
+                            for (x, y, w, h) in current_bboxes:
+                                cv2.rectangle(disp, (x, y), (x + w, y + h), (0, 0, 255), 2)
+                            cv2.putText(disp, f"frame {frame_idx} {time_stamp}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 4)
+                            cv2.imshow("Frame Monitor", disp)
+                            cv2.waitKey(50) # Short wait
+
+
+                        if current_full_text not in prev_slides_text :
                             prev_slide_gray = current_anchor_frame_gray.copy()
-    #                        prev_slides_text.add(current_full_text)
+                            prev_slides_text.add(current_full_text)
 
                             slide_idx += 1
                             clean_ts = time_stamp.replace(':', '-')
                             img_path = f"slides/slide_{slide_idx}_{frame_idx}_{clean_ts}.jpg"
-                            cv2.imwrite(img_path, current_anchor_frame)
+
+                            disp = current_anchor_frame.copy()
+                            if args.display:
+                                for (x, y, w, h) in current_bboxes:
+                                    cv2.rectangle(disp, (x, y), (x + w, y + h), (0, 0, 255), 2)
+                                cv2.putText(disp, f"slide {slide_idx} frame {frame_idx} {time_stamp}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 4)
+
+                            cv2.imwrite(img_path, disp)
                             
                             with open(CSV_FILE, 'a', encoding='utf-8') as f:
                                 f.write(f"{img_path},{slide_idx},{frame_idx},{time_stamp}\n")
                             
                             log(f"  --> [NEW SLIDE] slide {slide_idx} detected at frame {frame_idx} time {time_stamp}", always=True)
-    #                        log(f"      Current text: {current_full_text}", always=True)
+                            log(f"      Current text: {current_full_text}", always=True)
 
                             if args.display:
-                                disp = frame.copy()
+                                disp = current_anchor_frame.copy()
+                                for (x, y, w, h) in current_bboxes:
+                                    cv2.rectangle(disp, (x, y), (x + w, y + h), (0, 0, 255), 2)
                                 cv2.putText(disp, f"slide {slide_idx} frame {frame_idx} {time_stamp}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 4)
                                 cv2.imshow("Slide Monitor", disp)
-                                cv2.waitKey(500) # Short wait
+                                cv2.waitKey(50) # Short wait
 
  
         if args.display and cv2.waitKey(1) & 0xFF == ord('q'): break
