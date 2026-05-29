@@ -145,7 +145,7 @@ def download_media(url):
     video_path = f"{base}.mp4"
     if not os.path.exists(video_path):
         log(f"Downloading video...", always=True)
-        ydl_opts = {'format': 'bestvideo[ext=mp4][height<=1080]+bestaudio/best', 'outtmpl': f'{base}.%(ext)s', 'quiet': True}
+        ydl_opts = {'format': 'bestvideo[ext=mp4][height<=1080]+bestaudio/best', 'merge_output_format': 'mp4', 'outtmpl': f'{base}.%(ext)s', 'quiet': True}
         with yt_dlp.YoutubeDL(ydl_opts) as ydl: ydl.download([url])
     return video_path
 
@@ -157,7 +157,7 @@ def main():
     parser.add_argument("--display", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("--debug", action="store_true")
-    parser.add_argument("--scene_threshold", type=float, default=10.0)
+    parser.add_argument("--scene_threshold", type=float, default=1.0)
     parser.add_argument("--maxlen", type=int, default=5)
     args = parser.parse_args()
 
@@ -168,11 +168,19 @@ def main():
     LOG_FILE = pdf_name.replace('.pdf', '_log.txt')
     open(LOG_FILE, 'w', encoding='utf-8').close()  # initialize and clear previous run's log file
     
-    CSV_FILE = pdf_name.replace('.pdf', '_ts.csv')
-    with open(CSV_FILE, 'w', encoding='utf-8') as f:
-        f.write("img_path,slide_idx,frame_idx,time_stamp\n") # CSV Header
+    SLIDE_DIR = "slides"
+    SLIDE_CDT_DIR = "slides_cdt"
 
-    if not os.path.exists("slides"): os.makedirs("slides")
+    SLIDE_CSV_FILE = pdf_name.replace('.pdf', '_slide.csv')
+    with open(SLIDE_CSV_FILE, 'w', encoding='utf-8') as f:
+        f.write("img_path,frame_idx,time_stamp\n") # CSV Header
+
+    SLIDE_CDT_CSV_FILE = pdf_name.replace('.pdf', '_slide_cdt.csv')
+    with open(SLIDE_CDT_CSV_FILE, 'w', encoding='utf-8') as f:
+        f.write("img_path,frame_idx,time_stamp\n") # Scene CSV Header
+
+    if not os.path.exists(SLIDE_DIR): os.makedirs(SLIDE_DIR)
+    if not os.path.exists(SLIDE_CDT_DIR): os.makedirs(SLIDE_CDT_DIR)
     
     pdf_path = download_pdf(args.pdf)
     video_path = download_media(args.video_url)
@@ -185,7 +193,7 @@ def main():
     mode_image = None
     try:
         pages_array = np.stack([np.array(pg) for pg in pages])
-        mode_result = scipy.stats.mode(pages_array, axis=0)
+        mode_result = scipy.stats.mode(pages_array, axis=0, keepdims=True)
         mode_image = mode_result[0]
         if getattr(mode_image, 'ndim', 0) == 4 and mode_image.shape[0] == 1:
             mode_image = mode_image[0]
@@ -236,16 +244,19 @@ def main():
         sys.exit(1)
        
     if args.display:
-        cv2.namedWindow("Slide Monitor", cv2.WINDOW_NORMAL)
-        cv2.resizeWindow("Slide Monitor", 1280, 720)
-        cv2.namedWindow("Frame Monitor", cv2.WINDOW_AUTOSIZE)
+        cv2.namedWindow("Slide", cv2.WINDOW_AUTOSIZE)
+
+        cv2.namedWindow("Slide CDT Monitor", cv2.WINDOW_AUTOSIZE)
+
+        cv2.namedWindow("Slide CDT", cv2.WINDOW_NORMAL)
+        cv2.resizeWindow("Slide CDT", 1280, 720)
+
+        cv2.namedWindow("Currrent Frame", cv2.WINDOW_AUTOSIZE)
 
     qLen = args.maxlen
     qCenter = qLen // 2
 
     frame_buffer = deque(maxlen=qLen)
-    last_captured_text = "" 
-    slide_idx = 0
     prev_slide_gray = None
 
     log(f"Scanning via Global Vocabulary Match (2-word minimum)", always=True)
@@ -282,72 +293,69 @@ def main():
             time_ms = frame_buffer[qCenter][3]
             frame_idx = frame_buffer[qCenter][2]
             time_stamp = format_time(time_ms)
-            
+
+            if args.display:
+                disp = current_anchor_frame.copy()
+                cv2.putText(disp, f"Frame {frame_idx} at time {time_stamp}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 4)
+                cv2.imshow("Current Frame", disp)
+
             # detect scene changes
             if (prev_anchor_diff > args.scene_threshold) and (next_anchor_diff < args.scene_threshold):
-                if args.display and frame_buffer:
-                    combined_buffer = cv2.hconcat([cv2.resize(f[0], (16*15, 9*15)) for f in frame_buffer])
-                    cv2.putText(combined_buffer, f"[SCENE CHANGE] detected ({prev_anchor_diff:.2f}, {next_anchor_diff:.2f}) at frame {frame_idx} time {time_stamp}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-                    cv2.imshow("Frame Buffer", combined_buffer)
 
-                log(f"  --> [SCENE CHANGE] detected ({prev_anchor_diff:.2f}, {next_anchor_diff:.2f}) at frame {frame_idx} time {time_stamp}", always=True)
-
-                slide_diff = 255.
-                if prev_slide_gray  is not None:
-                    slide_diff = compute_frame_diff(prev_slide_gray, frame_buffer[-qCenter][1])
-
-                if slide_diff > args.scene_threshold:
-                    frame_h = current_anchor_frame_gray.shape[0]
-                    video_thick = max(10, int(dynamic_footer_height * (frame_h / pdf_h)))
-                    video_vocab, _ = get_footer_vocabulary(current_anchor_frame_gray, thick=video_thick)
+                # Check if it is a slice candidate
+                frame_h = current_anchor_frame_gray.shape[0]
+                video_thick = max(10, int(dynamic_footer_height * (frame_h / pdf_h)))
+                video_vocab, _ = get_footer_vocabulary(current_anchor_frame_gray, thick=video_thick)
                 
-                    # Filter video words against the Global PDF set
-                    global_overlap = video_vocab.intersection(global_pdf_vocabulary)
-                
-                    if len(global_overlap) >= 2:
-                        log(f"  --> [NEW SLIDE CANDIDATE] slide {slide_idx} with threshold {slide_diff:.2f}/{args.scene_threshold:.2f} detected at frame {frame_idx} time {time_stamp}", always=True)
+                # Filter video words against the Global PDF set
+                global_overlap = video_vocab.intersection(global_pdf_vocabulary)
 
+                if len(global_overlap) >= 2:
+                    log(f"  --> [SLIDE CDT] detected at frame {frame_idx} time {time_stamp} with difference ({prev_anchor_diff:.2f}, {next_anchor_diff:.2f})", always=True)
+
+                    # Save slide candidate 
+                    clean_ts = time_stamp.replace(':', '-')
+                    slide_name = f"slide_{frame_idx}_{clean_ts}.jpg"
+                    with open(SLIDE_CDT_CSV_FILE, 'a', encoding='utf-8') as f:
+                        f.write(f"{SLIDE_CDT_DIR}/{slide_name},{frame_idx},{time_stamp}\n")
+                    cv2.imwrite(f"{SLIDE_CDT_DIR}/{slide_name}", current_anchor_frame)
+
+                    if args.display and frame_buffer:
+                        combined_buffer = cv2.hconcat([cv2.resize(f[0], (16*15, 9*15)) for f in frame_buffer])
+                        cv2.imshow("Slide CDT Monitor", combined_buffer)
+
+                        disp = current_anchor_frame.copy()
+#                        cv2.putText(disp, f"Slide at frame {frame_idx} {time_stamp}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 4)
+                        cv2.putText(disp, f"[SLIDE CDT] detected at frame {frame_idx} time {time_stamp} with difference ({prev_anchor_diff:.2f}, {next_anchor_diff:.2f})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 4)
+                        cv2.imshow("Slide CDT", disp)
+
+                    slide_diff = 255.
+                    if prev_slide_gray is not None:
+                        slide_diff = compute_frame_diff(prev_slide_gray, current_anchor_frame_gray)
+
+                    if slide_diff > args.scene_threshold:
                         current_valid_words, current_bboxes = get_full_frame_ocr(current_anchor_frame_gray)
                         current_full_text = ' '.join(current_valid_words)
 
-                        disp = current_anchor_frame.copy()
-                        if args.display:
-                            for (x, y, w, h) in current_bboxes:
-                                cv2.rectangle(disp, (x, y), (x + w, y + h), (0, 0, 255), 2)
-                            cv2.putText(disp, f"frame {frame_idx} {time_stamp}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 4)
-                            cv2.imshow("Frame Monitor", disp)
-                            cv2.waitKey(50) # Short wait
+                        if not current_full_text or current_full_text not in prev_slides_text:
+                            log(f"  --> [SLIDE] detected at frame {frame_idx} time {time_stamp}", always=True)
+                            log(f"      Current text: {current_full_text}", always=True)
 
-
-                        if current_full_text not in prev_slides_text :
                             prev_slide_gray = current_anchor_frame_gray.copy()
                             prev_slides_text.add(current_full_text)
 
-                            slide_idx += 1
-                            clean_ts = time_stamp.replace(':', '-')
-                            img_path = f"slides/slide_{slide_idx}_{frame_idx}_{clean_ts}.jpg"
-
-                            disp = current_anchor_frame.copy()
-                            if args.display:
-                                for (x, y, w, h) in current_bboxes:
-                                    cv2.rectangle(disp, (x, y), (x + w, y + h), (0, 0, 255), 2)
-                                cv2.putText(disp, f"slide {slide_idx} frame {frame_idx} {time_stamp}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 4)
-
-                            cv2.imwrite(img_path, disp)
+                            img_path = f"{SLIDE_DIR}/{slide_name}"                            
+                            with open(SLIDE_CSV_FILE, 'a', encoding='utf-8') as f:
+                                f.write(f"{img_path},{frame_idx},{time_stamp}\n")
+                            cv2.imwrite(img_path, current_anchor_frame)
                             
-                            with open(CSV_FILE, 'a', encoding='utf-8') as f:
-                                f.write(f"{img_path},{slide_idx},{frame_idx},{time_stamp}\n")
-                            
-                            log(f"  --> [NEW SLIDE] slide {slide_idx} detected at frame {frame_idx} time {time_stamp}", always=True)
-                            log(f"      Current text: {current_full_text}", always=True)
-
                             if args.display:
                                 disp = current_anchor_frame.copy()
                                 for (x, y, w, h) in current_bboxes:
                                     cv2.rectangle(disp, (x, y), (x + w, y + h), (0, 0, 255), 2)
-                                cv2.putText(disp, f"slide {slide_idx} frame {frame_idx} {time_stamp}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 4)
-                                cv2.imshow("Slide Monitor", disp)
-                                cv2.waitKey(50) # Short wait
+                                cv2.putText(disp, f"Slide at frame {frame_idx} {time_stamp}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 4)
+                                cv2.imshow("Slide", disp)
+                                cv2.waitKey(5) # Short wait
 
  
         if args.display and cv2.waitKey(1) & 0xFF == ord('q'): break
