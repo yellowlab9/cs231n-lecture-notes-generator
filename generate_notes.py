@@ -131,6 +131,14 @@ def compute_frame_diff(frame_gray, anchor_frame_gray):
     anchor_feat = np.concatenate([np.mean(anchor_frame_gray, axis=0), np.mean(anchor_frame_gray, axis=1)])
     return float(np.median(np.abs(frame_feat - anchor_feat)))
 
+def compute_percentage_of_pixels_changed(frame_gray, anchor_frame_gray, threshold):
+    diff = cv2.absdiff(frame_gray, anchor_frame_gray)
+    _, thresh_diff = cv2.threshold(diff, threshold, 255, cv2.THRESH_BINARY)
+    changed_pixels = cv2.countNonZero(thresh_diff)
+    total_pixels = frame_gray.size
+    percentage_changed = (changed_pixels / total_pixels) * 100.0
+    return percentage_changed
+
 def download_pdf(pdf_source):
     pdf_path = pdf_source.split("/")[-1] if pdf_source.startswith("http") else pdf_source
     if os.path.exists(pdf_path): return pdf_path
@@ -158,6 +166,8 @@ def main():
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--scene_threshold", type=float, default=1.0)
+    parser.add_argument("--pixel_threshold", type=int, default=8)    
+    parser.add_argument("--pcnt_pixels_changed", type=float, default=1.0)
     parser.add_argument("--maxlen", type=int, default=5)
     args = parser.parse_args()
 
@@ -261,7 +271,7 @@ def main():
 
     log(f"Scanning via Global Vocabulary Match (2-word minimum)", always=True)
 
-    prev_slides_text  = set()
+#   prev_slides_text  = set()
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret: break
@@ -329,20 +339,23 @@ def main():
                         cv2.putText(disp, f"[SLIDE CDT] detected at frame {frame_idx} time {time_stamp} with difference ({prev_anchor_diff:.2f}, {next_anchor_diff:.2f})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 4)
                         cv2.imshow("Slide CDT", disp)
 
-                    slide_diff = 255.
+                    slide_pcnt_pixels_changed = 100.0
                     if prev_slide_gray is not None:
-                        slide_diff = compute_frame_diff(prev_slide_gray, current_anchor_frame_gray)
+                        slide_pcnt_pixels_changed = compute_percentage_of_pixels_changed(prev_slide_gray, current_anchor_frame_gray, args.pixel_threshold)
 
-                    if slide_diff > args.scene_threshold:
-                        current_valid_words, current_bboxes = get_full_frame_ocr(current_anchor_frame_gray)
-                        current_full_text = ' '.join(current_valid_words)
+                    log(f"      pcnt_pixels_changed: {slide_pcnt_pixels_changed:.2f}%, {args.pcnt_pixels_changed:.2f}%")
 
-                        if not current_full_text or current_full_text not in prev_slides_text:
+                    if slide_pcnt_pixels_changed > args.pcnt_pixels_changed:
+#                        current_valid_words, current_bboxes = get_full_frame_ocr(current_anchor_frame_gray)
+#                        current_full_text = ' '.join(current_valid_words)
+
+#                        if not current_full_text or current_full_text not in prev_slides_text:
+                        if True:
                             log(f"  --> [SLIDE] detected at frame {frame_idx} time {time_stamp}", always=True)
-                            log(f"      Current text: {current_full_text}", always=True)
+#                            log(f"      Current text: {current_full_text}", always=True)
 
                             prev_slide_gray = current_anchor_frame_gray.copy()
-                            prev_slides_text.add(current_full_text)
+#                            prev_slides_text.add(current_full_text)
 
                             img_path = f"{SLIDE_DIR}/{slide_name}"                            
                             with open(SLIDE_CSV_FILE, 'a', encoding='utf-8') as f:
@@ -351,8 +364,8 @@ def main():
                             
                             if args.display:
                                 disp = current_anchor_frame.copy()
-                                for (x, y, w, h) in current_bboxes:
-                                    cv2.rectangle(disp, (x, y), (x + w, y + h), (0, 0, 255), 2)
+#                                for (x, y, w, h) in current_bboxes:
+#                                    cv2.rectangle(disp, (x, y), (x + w, y + h), (0, 0, 255), 2)
                                 cv2.putText(disp, f"Slide at frame {frame_idx} {time_stamp}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 4)
                                 cv2.imshow("Slide", disp)
                                 cv2.waitKey(5) # Short wait
