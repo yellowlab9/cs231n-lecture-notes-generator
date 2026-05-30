@@ -165,9 +165,10 @@ def main():
     parser.add_argument("--display", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("--debug", action="store_true")
-    parser.add_argument("--scene_threshold", type=float, default=1.0)
-    parser.add_argument("--pixel_threshold", type=int, default=8)    
-    parser.add_argument("--pcnt_pixels_changed", type=float, default=1.0)
+    parser.add_argument("--scene_threshold", type=int, default=10)
+    parser.add_argument("--scene_pcnt_pixels_changed", type=float, default=2.0)    
+    parser.add_argument("--slide_threshold", type=int, default=64)
+    parser.add_argument("--slide_pcnt_pixels_changed", type=float, default=1.0)
     parser.add_argument("--maxlen", type=int, default=5)
     args = parser.parse_args()
 
@@ -282,11 +283,10 @@ def main():
         
         frame_idx = int(cap.get(cv2.CAP_PROP_POS_FRAMES))        
         time_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
- 
+
+        frame_diff = 0.0 
         if len(frame_buffer) >= qLen:
-            frame_diff = compute_frame_diff(frame_gray, frame_buffer[-qCenter][1])
-        else:
-            frame_diff = 0
+            frame_diff = compute_percentage_of_pixels_changed(frame_gray, frame_buffer[-qCenter][1], args.scene_threshold)
 
         frame_buffer.append((frame, frame_gray, frame_idx, time_ms, frame_diff))
 
@@ -310,7 +310,7 @@ def main():
                 cv2.imshow("Current Frame", disp)
 
             # detect scene changes
-            if (prev_anchor_diff > args.scene_threshold) and (next_anchor_diff < args.scene_threshold):
+            if (prev_anchor_diff > args.scene_pcnt_pixels_changed) and (next_anchor_diff < args.scene_pcnt_pixels_changed):
 
                 # Check if it is a slice candidate
                 frame_h = current_anchor_frame_gray.shape[0]
@@ -341,11 +341,11 @@ def main():
 
                     slide_pcnt_pixels_changed = 100.0
                     if prev_slide_gray is not None:
-                        slide_pcnt_pixels_changed = compute_percentage_of_pixels_changed(prev_slide_gray, current_anchor_frame_gray, args.pixel_threshold)
+                        slide_pcnt_pixels_changed = compute_percentage_of_pixels_changed(prev_slide_gray, current_anchor_frame_gray, args.slide_threshold)
 
-                    log(f"      pcnt_pixels_changed: {slide_pcnt_pixels_changed:.2f}%, {args.pcnt_pixels_changed:.2f}%")
+                    log(f"      slide_pcnt_pixels_changed: {slide_pcnt_pixels_changed:.2f}%, {args.slide_pcnt_pixels_changed:.2f}%")
 
-                    if slide_pcnt_pixels_changed > args.pcnt_pixels_changed:
+                    if slide_pcnt_pixels_changed > args.slide_pcnt_pixels_changed:
 #                        current_valid_words, current_bboxes = get_full_frame_ocr(current_anchor_frame_gray)
 #                        current_full_text = ' '.join(current_valid_words)
 
