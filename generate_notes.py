@@ -87,8 +87,14 @@ def get_footer_vocabulary(input_gray_image, thick=80):
     gray_image = input_gray_image.copy()
     h, w = gray_image.shape
     footer_strip = gray_image[h-thick:h, 0:w]
+    
+    # 1. Upscale the image slice (Tesseract prefers characters to be ~30 pixels high)
+    footer_strip = cv2.resize(footer_strip, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
+
     thresh = clean_light_content(footer_strip)
-    text = pytesseract.image_to_string(thresh, config='--oem 3 --psm 7').strip()
+    
+    # 2. Change PSM to 6 (Assume a single uniform block of text) to handle multi-line or slight misalignments
+    text = pytesseract.image_to_string(thresh, config='--oem 3 --psm 6').strip()
     # Capture words 3+ chars long, ignoring case
     words = set(re.findall(r'\b\w{3,}\b', text.lower()))
     return words, text.replace('\n', ' ').strip()
