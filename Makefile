@@ -24,6 +24,7 @@ notes:
 	@echo "Model: $(MODEL)"
 	@echo "=========================================================="
 	make clean_slides
+	make clean_slides_cdt
 	python generate_notes.py --video_url $(VIDEO_URL) --pdf $(PDF_URL) --model $(MODEL) $(VERBOSE) $(DISPLAY) $(DEBUG)
 
 # Clean up local environment
@@ -37,3 +38,8 @@ clean_slides:
 	@echo "Cleaning up slides..."
 	mkdir -p slides
 	rm -f slides/*
+
+clean_slides_cdt:
+	@echo "Cleaning up slides canditate ..."
+	mkdir -p slides_cdt
+	rm -f slides_cdt/*

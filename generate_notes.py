@@ -10,6 +10,7 @@ from pdf2image import convert_from_path
 import numpy as np
 import scipy.stats
 import sys
+import av
 
 # --- WINDOWS DPI AWARENESS ---
 # Prevents OpenCV windows from being artificially blown up by Windows display scaling
@@ -81,8 +82,9 @@ def detect_footer_height(gray_img, default_thick=80, max_search_ratio=0.15):
             
     return default_thick
 
-def get_footer_vocabulary(gray_image, thick=80):
+def get_footer_vocabulary(input_gray_image, thick=80):
     """Extracts words strictly from the bottom 80 pixels."""
+    gray_image = input_gray_image.copy()
     h, w = gray_image.shape
     footer_strip = gray_image[h-thick:h, 0:w]
     thresh = clean_light_content(footer_strip)
@@ -165,10 +167,10 @@ def main():
     parser.add_argument("--display", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("--debug", action="store_true")
-    parser.add_argument("--scene_threshold", type=int, default=10)
-    parser.add_argument("--scene_pcnt_pixels_changed", type=float, default=2.0)    
-    parser.add_argument("--slide_threshold", type=int, default=64)
-    parser.add_argument("--slide_pcnt_pixels_changed", type=float, default=1.0)
+    parser.add_argument("--scene_threshold", type=int, default=16)
+    parser.add_argument("--scene_pcnt_pixels_changed", type=float, default=0.1)    
+    parser.add_argument("--slide_threshold", type=int, default=32)
+    parser.add_argument("--slide_pcnt_pixels_changed", type=float, default=0.1)
     parser.add_argument("--maxlen", type=int, default=5)
     args = parser.parse_args()
 
@@ -238,20 +240,20 @@ def main():
 
     log(f"Global vocabulary size: {len(global_pdf_vocabulary)} words.", always=True)
 
-    # Request Hardware Acceleration (GPU decoding) for video reading if available
-    cap = cv2.VideoCapture(video_path, cv2.CAP_ANY, [cv2.CAP_PROP_HW_ACCELERATION, cv2.VIDEO_ACCELERATION_ANY])
+    try:
+        container = av.open(video_path)
+        video_stream = container.streams.video[0]
+        video_stream.thread_type = "AUTO" # Enable multithreaded decoding
 
-    if cap.isOpened():
-        fps = cap.get(cv2.CAP_PROP_FPS)
+        fps = float(video_stream.average_rate) if video_stream.average_rate else 0.0
         fps1001 = int(round(fps * 1001))
-        
-        frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
-        width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-        height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        frame_count = video_stream.frames or 0
+        width = video_stream.codec_context.width
+        height = video_stream.codec_context.height
 
-        log(f"Video properties - FPS*1001: {fps1001}, Frame Count: {frame_count}, Resolution: {width}x{height}", always=True)
-    else:
-        log(f"Error: Could not open video {video_path}", always=True)
+        log(f"Video properties (PyAV) - FPS*1001: {fps1001}, Frame Count: {frame_count}, Resolution: {width}x{height}", always=True)
+    except Exception as e:
+        log(f"Error: Could not open video {video_path} with PyAV: {e}", always=True)
         sys.exit(1)
        
     if args.display:
@@ -262,7 +264,10 @@ def main():
         cv2.namedWindow("Slide CDT", cv2.WINDOW_NORMAL)
         cv2.resizeWindow("Slide CDT", 1280, 720)
 
-        cv2.namedWindow("Currrent Frame", cv2.WINDOW_AUTOSIZE)
+        cv2.namedWindow("Current Frame", cv2.WINDOW_AUTOSIZE)
+
+        cv2.namedWindow("Scene Changed", cv2.WINDOW_NORMAL)
+        cv2.resizeWindow("Scene Changed", 1280, 720)
 
     qLen = args.maxlen
     qCenter = qLen // 2
@@ -273,16 +278,18 @@ def main():
     log(f"Scanning via Global Vocabulary Match (2-word minimum)", always=True)
 
 #   prev_slides_text  = set()
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret: break
+    frame_idx = 0
+    for av_frame in container.decode(video=0):
+        frame_idx += 1
         
-        frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # Skip B-frames (pict_type is 3 for B-frames in FFmpeg, or an enum with name 'B')
+        if getattr(av_frame.pict_type, 'name', None) == 'B' or av_frame.pict_type == 3:
+            continue
 
-#        frame_gray = cv2.resize(frame_gray, (0, 0), fx=0.5, fy=0.5)
+        frame = av_frame.to_ndarray(format='bgr24')
+        frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         
-        frame_idx = int(cap.get(cv2.CAP_PROP_POS_FRAMES))        
-        time_ms = cap.get(cv2.CAP_PROP_POS_MSEC)
+        time_ms = float(av_frame.time * 1000) if av_frame.time is not None else 0.0
 
         frame_diff = 0.0 
         if len(frame_buffer) >= qLen:
@@ -306,22 +313,37 @@ def main():
 
             if args.display:
                 disp = current_anchor_frame.copy()
-                cv2.putText(disp, f"Frame {frame_idx} at time {time_stamp}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 4)
+                cv2.putText(disp, f"Frame {frame_idx} at time {time_stamp} with ({prev_anchor_diff:5.2f},{next_anchor_diff:5.2f})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
                 cv2.imshow("Current Frame", disp)
 
             # detect scene changes
-            if (prev_anchor_diff > args.scene_pcnt_pixels_changed) and (next_anchor_diff < args.scene_pcnt_pixels_changed):
-
-                # Check if it is a slice candidate
+            if (prev_anchor_diff > args.scene_pcnt_pixels_changed) and (next_anchor_diff < args.scene_pcnt_pixels_changed/2):
+                # Check if it is a slide candidate
                 frame_h = current_anchor_frame_gray.shape[0]
                 video_thick = max(10, int(dynamic_footer_height * (frame_h / pdf_h)))
                 video_vocab, _ = get_footer_vocabulary(current_anchor_frame_gray, thick=video_thick)
-                
+ 
                 # Filter video words against the Global PDF set
                 global_overlap = video_vocab.intersection(global_pdf_vocabulary)
 
+                log(f"  --> [Scene Changed] Frame {frame_idx} at time {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f})", always=True)
+                log(f"                      {video_vocab}",    always=True)
+                log(f"                      {global_overlap}", always=True)
+
+                if args.display and len(global_overlap) < 2:
+                    disp = current_anchor_frame_gray.copy()
+                    cv2.putText(disp, f"[Scene Changed] Frame {frame_idx} at time {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
+                    cv2.imshow("Scene Changed", disp)
+                    video_vocab, _ = get_footer_vocabulary(current_anchor_frame_gray, thick=video_thick)
+                    log(f"                      {video_vocab}",    always=True)
+                    log(f"                      {video_thick}",    always=True)
+
+                    if frame_idx == 18373:
+                        cv2.waitKey(1)
+                        input("hit return to continue ")
+
                 if len(global_overlap) >= 2:
-                    log(f"  --> [SLIDE CDT] detected at frame {frame_idx} time {time_stamp} with difference ({prev_anchor_diff:.2f}, {next_anchor_diff:.2f})", always=True)
+                    log(f"  --> [SLIDE CDT] Frame {frame_idx} at time {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f})", always=True)
 
                     # Save slide candidate 
                     clean_ts = time_stamp.replace(':', '-')
@@ -336,7 +358,7 @@ def main():
 
                         disp = current_anchor_frame.copy()
 #                        cv2.putText(disp, f"Slide at frame {frame_idx} {time_stamp}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 4)
-                        cv2.putText(disp, f"[SLIDE CDT] detected at frame {frame_idx} time {time_stamp} with difference ({prev_anchor_diff:.2f}, {next_anchor_diff:.2f})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 4)
+                        cv2.putText(disp, f"[SLIDE CDT] Frame {frame_idx} at time {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
                         cv2.imshow("Slide CDT", disp)
 
                     slide_pcnt_pixels_changed = 100.0
@@ -351,7 +373,7 @@ def main():
 
 #                        if not current_full_text or current_full_text not in prev_slides_text:
                         if True:
-                            log(f"  --> [SLIDE] detected at frame {frame_idx} time {time_stamp}", always=True)
+                            log(f"  --> [SLIDE] Frame {frame_idx} at time {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f})", always=True)
 #                            log(f"      Current text: {current_full_text}", always=True)
 
                             prev_slide_gray = current_anchor_frame_gray.copy()
@@ -366,14 +388,14 @@ def main():
                                 disp = current_anchor_frame.copy()
 #                                for (x, y, w, h) in current_bboxes:
 #                                    cv2.rectangle(disp, (x, y), (x + w, y + h), (0, 0, 255), 2)
-                                cv2.putText(disp, f"Slide at frame {frame_idx} {time_stamp}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 4)
+                                cv2.putText(disp, f"Slide at frame {frame_idx} {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
                                 cv2.imshow("Slide", disp)
                                 cv2.waitKey(5) # Short wait
 
  
         if args.display and cv2.waitKey(1) & 0xFF == ord('q'): break
 
-    cap.release()
+    container.close()
     cv2.destroyAllWindows()
     log("Complete!", always=True)
 
