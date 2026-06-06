@@ -44,11 +44,6 @@ def log(msg, always=False):
             with open(LOG_FILE, 'a', encoding='utf-8') as f:
                 f.write(log_msg + '\n')
 
-def clean_dark_content(gray_img):
-    gray_img = cv2.GaussianBlur(gray_img, (3, 3), 0)
-    _, thresh = cv2.threshold(gray_img, 150, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
-    return thresh
-
 def clean_light_content(gray_img):
     gray_img = cv2.GaussianBlur(gray_img, (3, 3), 0)
     _, thresh = cv2.threshold(gray_img, 150, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
@@ -86,6 +81,7 @@ def get_footer_vocabulary(input_gray_image, thick=80):
     """Extracts words strictly from the bottom 80 pixels."""
     gray_image = input_gray_image.copy()
     h, w = gray_image.shape
+    thick = min(thick, h)
     footer_strip = gray_image[h-thick:h, 0:w]
     
     # 1. Upscale the image slice (Tesseract prefers characters to be ~30 pixels high)
@@ -99,46 +95,6 @@ def get_footer_vocabulary(input_gray_image, thick=80):
     words = set(re.findall(r'\b\w{3,}\b', text.lower()))
     return words, text.replace('\n', ' ').strip()
 
-def get_footer_color_distribution(image, thick=80):
-    """Calculates the normalized color histogram (distribution) of the image footer."""
-    h, w, _ = image.shape
-    footer_strip = image[h-thick:h, 0:w]
-    # Calculate 3D color histogram across B, G, R channels with 8 bins per channel
-    hist = cv2.calcHist([footer_strip], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
-    cv2.normalize(hist, hist, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
-    return hist.flatten()
-
-def get_full_frame_ocr(gray_image, min_conf=60, min_height=10):
-    """Performs OCR on the entire image for content comparison."""
-    thresh = clean_light_content(gray_image)
-    data = pytesseract.image_to_data(thresh, output_type=pytesseract.Output.DICT, config='--oem 3 --psm 11')
-            
-    valid_words = []
-    bboxes = []
-    for i, word in enumerate(data['text']):
-        try:
-            conf = float(data['conf'][i])
-            height = int(data['height'][i])
-        except (ValueError, TypeError):
-            conf = 0.0
-            height = 0
-            
-        if conf > min_conf and height > min_height:
-            matched = re.findall(r'\b\w{3,}\b', str(word).lower())
-            if matched:
-                valid_words.extend(matched)
-                x, y, w, h = data['left'][i], data['top'][i], data['width'][i], data['height'][i]
-                for _ in matched:
-                    bboxes.append((x, y, w, h))
-            
-    return valid_words, bboxes
-
-def compute_frame_diff(frame_gray, anchor_frame_gray):
-   # Form feature vectors (length: width + height) from column and row averages
-    frame_feat = np.concatenate([np.mean(frame_gray, axis=0), np.mean(frame_gray, axis=1)])
-    anchor_feat = np.concatenate([np.mean(anchor_frame_gray, axis=0), np.mean(anchor_frame_gray, axis=1)])
-    return float(np.median(np.abs(frame_feat - anchor_feat)))
-
 def compute_percentage_of_pixels_changed(frame_gray, anchor_frame_gray, threshold):
     diff = cv2.absdiff(frame_gray, anchor_frame_gray)
     _, thresh_diff = cv2.threshold(diff, threshold, 255, cv2.THRESH_BINARY)
@@ -146,6 +102,24 @@ def compute_percentage_of_pixels_changed(frame_gray, anchor_frame_gray, threshol
     total_pixels = frame_gray.size
     percentage_changed = (changed_pixels / total_pixels) * 100.0
     return percentage_changed
+
+def save_slide_mode(frames_list, output_path):
+    """Calculates and saves the mode image of a list of frames to the specified path."""
+    mode_img = None
+    if not frames_list or not output_path:
+        return mode_img
+    try:
+        frames_array = np.stack(frames_list)
+        mode_result = scipy.stats.mode(frames_array, axis=0, keepdims=True)
+        mode_img = mode_result[0]
+        if getattr(mode_img, 'ndim', 0) == 4 and mode_img.shape[0] == 1:
+            mode_img = mode_img[0]
+        mode_img = mode_img.astype(np.uint8)
+        cv2.imwrite(output_path, mode_img)
+        log(f"      Updated {output_path} with mode of {len(frames_list)} frames.", always=True)
+    except Exception as e:
+        log(f"      Failed to calculate mode for {output_path}: {e}", always=True)
+    return mode_img
 
 def download_pdf(pdf_source):
     pdf_path = pdf_source.split("/")[-1] if pdf_source.startswith("http") else pdf_source
@@ -173,10 +147,11 @@ def main():
     parser.add_argument("--display", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("--debug", action="store_true")
-    parser.add_argument("--scene_threshold", type=int, default=16)
-    parser.add_argument("--scene_pcnt_pixels_changed", type=float, default=0.1)    
+    parser.add_argument("--scene_threshold", type=int, default=32)
+    parser.add_argument("--past_scene_pcnt_pixels_changed", type=float, default=5.0)    
+    parser.add_argument("--next_scene_pcnt_pixels_changed", type=float, default=0.1)    
     parser.add_argument("--slide_threshold", type=int, default=32)
-    parser.add_argument("--slide_pcnt_pixels_changed", type=float, default=0.1)
+    parser.add_argument("--slide_pcnt_pixels_changed", type=float, default=1.0)
     parser.add_argument("--maxlen", type=int, default=5)
     args = parser.parse_args()
 
@@ -280,17 +255,19 @@ def main():
 
     frame_buffer = deque(maxlen=qLen)
     prev_slide_gray = None
+    same_slide_frames = []
+    current_slide_img_path = None
 
     log(f"Scanning via Global Vocabulary Match (2-word minimum)", always=True)
 
-#   prev_slides_text  = set()
-    frame_idx = 0
-    for av_frame in container.decode(video=0):
-        frame_idx += 1
+    count = 0
+    for frame_idx, av_frame in enumerate(container.decode(video=0)):
         
         # Skip B-frames (pict_type is 3 for B-frames in FFmpeg, or an enum with name 'B')
         if getattr(av_frame.pict_type, 'name', None) == 'B' or av_frame.pict_type == 3:
             continue
+
+        isIntra = getattr(av_frame.pict_type, 'name', None) == 'I' or av_frame.pict_type == 1
 
         frame = av_frame.to_ndarray(format='bgr24')
         frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -322,84 +299,89 @@ def main():
                 cv2.putText(disp, f"Frame {frame_idx} at time {time_stamp} with ({prev_anchor_diff:5.2f},{next_anchor_diff:5.2f})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
                 cv2.imshow("Current Frame", disp)
 
-            # detect scene changes
-            if (prev_anchor_diff > args.scene_pcnt_pixels_changed) and (next_anchor_diff < args.scene_pcnt_pixels_changed/2):
-                # Check if it is a slide candidate
-                frame_h = current_anchor_frame_gray.shape[0]
-                video_thick = max(10, int(dynamic_footer_height * (frame_h / pdf_h)))
-                video_vocab, _ = get_footer_vocabulary(current_anchor_frame_gray, thick=video_thick)
- 
-                # Filter video words against the Global PDF set
-                global_overlap = video_vocab.intersection(global_pdf_vocabulary)
+            scene_changed_from_past = prev_anchor_diff > args.past_scene_pcnt_pixels_changed
+            scene_changed_from_next = next_anchor_diff > args.next_scene_pcnt_pixels_changed
 
-                log(f"  --> [Scene Changed] Frame {frame_idx} at time {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f})", always=True)
-                log(f"                      {video_vocab}",    always=True)
-                log(f"                      {global_overlap}", always=True)
+            slide_cdt = not (scene_changed_from_past or scene_changed_from_next)
 
-                if args.display and len(global_overlap) < 2:
-                    disp = current_anchor_frame_gray.copy()
-                    cv2.putText(disp, f"[Scene Changed] Frame {frame_idx} at time {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
-                    cv2.imshow("Scene Changed", disp)
-                    video_vocab, _ = get_footer_vocabulary(current_anchor_frame_gray, thick=video_thick)
-                    log(f"                      {video_vocab}",    always=True)
-                    log(f"                      {video_thick}",    always=True)
+            if slide_cdt:
+                if args.display and frame_buffer:
+                    combined_buffer = cv2.hconcat([cv2.resize(f[0], (16*15, 9*15)) for f in frame_buffer])
+                    cv2.imshow("Slide CDT Monitor", combined_buffer)
 
-                    if frame_idx == 18373:
-                        cv2.waitKey(1)
-                        input("hit return to continue ")
+                    disp = current_anchor_frame.copy()
+                    cv2.putText(disp, f"[SLIDE CDT] Frame {frame_idx} at time {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
+                    cv2.imshow("Slide CDT", disp)
 
-                if len(global_overlap) >= 2:
-                    log(f"  --> [SLIDE CDT] Frame {frame_idx} at time {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f})", always=True)
+                slide_pcnt_pixels_changed = 100.0
+                if prev_slide_gray is not None:
+                    slide_pcnt_pixels_changed = compute_percentage_of_pixels_changed(prev_slide_gray, current_anchor_frame_gray, args.slide_threshold)
+                else:
+                    prev_slide_gray = current_anchor_frame_gray.copy()
+
+                if slide_pcnt_pixels_changed > args.slide_pcnt_pixels_changed:
+                    log(f"  --> [SLIDE CDT]    Frame {frame_idx} at time {time_stamp} with ({slide_pcnt_pixels_changed:5.2f}, {prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f})", always=True)
 
                     # Save slide candidate 
                     clean_ts = time_stamp.replace(':', '-')
-                    slide_name = f"slide_{frame_idx}_{clean_ts}.jpg"
+                    slide_cdt_name = f"slide_{frame_idx}_{clean_ts}.jpg"
                     with open(SLIDE_CDT_CSV_FILE, 'a', encoding='utf-8') as f:
-                        f.write(f"{SLIDE_CDT_DIR}/{slide_name},{frame_idx},{time_stamp}\n")
-                    cv2.imwrite(f"{SLIDE_CDT_DIR}/{slide_name}", current_anchor_frame)
+                        f.write(f"{SLIDE_CDT_DIR}/{slide_cdt_name},{frame_idx},{time_stamp}\n")
+                    cv2.imwrite(f"{SLIDE_CDT_DIR}/{slide_cdt_name}", current_anchor_frame)
 
-                    if args.display and frame_buffer:
-                        combined_buffer = cv2.hconcat([cv2.resize(f[0], (16*15, 9*15)) for f in frame_buffer])
-                        cv2.imshow("Slide CDT Monitor", combined_buffer)
+                    frame_h = current_anchor_frame_gray.shape[0]
+                    video_thick = max(10, int(dynamic_footer_height * (frame_h / pdf_h)))
+                    video_vocab, _ = get_footer_vocabulary(current_anchor_frame_gray, thick=video_thick)
+            
+                    # Filter video words against the Global PDF set
+                    global_overlap = video_vocab.intersection(global_pdf_vocabulary)
 
-                        disp = current_anchor_frame.copy()
-#                        cv2.putText(disp, f"Slide at frame {frame_idx} {time_stamp}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 4)
-                        cv2.putText(disp, f"[SLIDE CDT] Frame {frame_idx} at time {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
-                        cv2.imshow("Slide CDT", disp)
+                    if len(global_overlap) >= 2:
+                        slide_detected = True
+                        new_slide_detected = True
+                    else:
+                        slide_detected = False
+                        new_slide_detected = False
+                else:
+                    slide_detected = True
+                    new_slide_detected = False
+            else:
+                slide_detected = False
+                new_slide_detected = False
 
-                    slide_pcnt_pixels_changed = 100.0
-                    if prev_slide_gray is not None:
-                        slide_pcnt_pixels_changed = compute_percentage_of_pixels_changed(prev_slide_gray, current_anchor_frame_gray, args.slide_threshold)
+            if slide_detected:
+                if new_slide_detected:
+                    if current_slide_img_path is not None:
+                        log(f"      Output previous slides mode (Total frames: {len(same_slide_frames)})", always=True)
+                        save_slide_mode(same_slide_frames, current_slide_img_path)
 
-                    log(f"      slide_pcnt_pixels_changed: {slide_pcnt_pixels_changed:.2f}%, {args.slide_pcnt_pixels_changed:.2f}%")
+                    clean_ts = time_stamp.replace(':', '-')
+                    slide_name = f"slide_{frame_idx}_{clean_ts}.jpg"
 
-                    if slide_pcnt_pixels_changed > args.slide_pcnt_pixels_changed:
-#                        current_valid_words, current_bboxes = get_full_frame_ocr(current_anchor_frame_gray)
-#                        current_full_text = ' '.join(current_valid_words)
-
-#                        if not current_full_text or current_full_text not in prev_slides_text:
-                        if True:
-                            log(f"  --> [SLIDE] Frame {frame_idx} at time {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f})", always=True)
-#                            log(f"      Current text: {current_full_text}", always=True)
-
-                            prev_slide_gray = current_anchor_frame_gray.copy()
-#                            prev_slides_text.add(current_full_text)
-
-                            img_path = f"{SLIDE_DIR}/{slide_name}"                            
-                            with open(SLIDE_CSV_FILE, 'a', encoding='utf-8') as f:
-                                f.write(f"{img_path},{frame_idx},{time_stamp}\n")
-                            cv2.imwrite(img_path, current_anchor_frame)
-                            
-                            if args.display:
-                                disp = current_anchor_frame.copy()
-#                                for (x, y, w, h) in current_bboxes:
-#                                    cv2.rectangle(disp, (x, y), (x + w, y + h), (0, 0, 255), 2)
-                                cv2.putText(disp, f"Slide at frame {frame_idx} {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
-                                cv2.imshow("Slide", disp)
-                                cv2.waitKey(5) # Short wait
-
+                    img_path = f"{SLIDE_DIR}/{slide_name}"
+                    with open(SLIDE_CSV_FILE, 'a', encoding='utf-8') as f:
+                        f.write(f"{img_path},{frame_idx},{time_stamp}\n")
  
-        if args.display and cv2.waitKey(1) & 0xFF == ord('q'): break
+                    same_slide_frames = [current_anchor_frame.copy()]
+                    current_slide_img_path = img_path
+                    prev_slide_gray = current_anchor_frame_gray.copy()
+
+                    if args.display:
+                        disp = current_anchor_frame.copy()
+                        cv2.putText(disp, f"Slide at frame {frame_idx} {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
+                        cv2.imshow("Slide", disp)
+                        cv2.waitKey(5) # Short wait`                    
+                    count = 0
+                else:
+                    if count % 4 == 0 and count <= 30*4:
+                        same_slide_frames.append(current_anchor_frame.copy())
+                count += 1
+
+        if args.display and cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    # Process the mode for the final accumulated slide at the end of the loop
+    save_slide_mode(same_slide_frames, current_slide_img_path)
 
     container.close()
     cv2.destroyAllWindows()
