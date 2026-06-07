@@ -204,7 +204,7 @@ def main():
     parser.add_argument("--past_scene_pcnt_pixels_changed", type=float, default=5.0)
     parser.add_argument("--next_scene_pcnt_pixels_changed", type=float, default=0.1)
     parser.add_argument("--slide_threshold", type=int, default=64)
-    parser.add_argument("--slide_pcnt_pixels_changed", type=float, default=0.5)
+    parser.add_argument("--slide_pcnt_pixels_changed", type=float, default=0.1)
     parser.add_argument("--maxlen", type=int, default=5)
     parser.add_argument("--max_same_slides", type=int, default=64)
     args = parser.parse_args()
