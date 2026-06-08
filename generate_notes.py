@@ -223,12 +223,7 @@ def main():
     with open(SLIDE_CSV_FILE, 'w', encoding='utf-8') as f:
         f.write("img_path,frame_idx,time_stamp\n") # CSV Header
 
-    SLIDE_CDT_CSV_FILE = pdf_name.replace('.pdf', '_slide_cdt.csv')
-    with open(SLIDE_CDT_CSV_FILE, 'w', encoding='utf-8') as f:
-        f.write("img_path,frame_idx,time_stamp\n") # Scene CSV Header
-
     if not os.path.exists(SLIDE_DIR): os.makedirs(SLIDE_DIR)
-    if not os.path.exists(SLIDE_CDT_DIR): os.makedirs(SLIDE_CDT_DIR)
 
     pdf_path = download_pdf(args.pdf)
     video_path = download_media(args.video_url)
@@ -375,13 +370,6 @@ def main():
 
                 if slide_pcnt_pixels_changed > args.slide_pcnt_pixels_changed:
                     log(f"  --> [SLIDE CDT]    Frame {frame_idx} at time {time_stamp} with ({slide_pcnt_pixels_changed:5.2f}, {prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f})", always=True)
-
-                    # Save slide candidate
-                    clean_ts = time_stamp.replace(':', '-')
-                    slide_cdt_name = f"slide_{frame_idx}_{clean_ts}.jpg"
-                    with open(SLIDE_CDT_CSV_FILE, 'a', encoding='utf-8') as f:
-                        f.write(f"{SLIDE_CDT_DIR}/{slide_cdt_name},{frame_idx},{time_stamp}\n")
-                    cv2.imwrite(f"{SLIDE_CDT_DIR}/{slide_cdt_name}", current_anchor_frame)
 
                     frame_h = current_anchor_frame_gray.shape[0]
                     video_thick = max(10, int(dynamic_footer_height * (frame_h / pdf_h)))
