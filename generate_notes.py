@@ -103,6 +103,13 @@ def compute_percentage_of_pixels_changed(frame_gray, anchor_frame_gray, threshol
     percentage_changed = (changed_pixels / total_pixels) * 100.0
     return percentage_changed
 
+def compute_image_entropy(frame_gray):
+    """Computes the Shannon entropy of a grayscale image in bits."""
+    hist = cv2.calcHist([frame_gray], [0], None, [256], [0, 256]).ravel()
+    hist = hist[hist > 0]
+    hist = hist / hist.sum()
+    return -np.sum(hist * np.log2(hist))
+
 def kde_mode(frames_list, bandwidth=20.0, max_samples=128):
     """
     Estimates the mode of pixels across frames using a fast subsampled mode.
@@ -324,10 +331,12 @@ def main():
         time_ms = float(av_frame.time * 1000) if av_frame.time is not None else 0.0
 
         frame_diff = 0.0
-        if len(frame_buffer) >= qLen:
+        if len(frame_buffer) >= qCenter:
             frame_diff = compute_percentage_of_pixels_changed(frame_gray, frame_buffer[-qCenter][1], args.scene_threshold)
 
-        frame_buffer.append((frame, frame_gray, frame_idx, time_ms, frame_diff))
+        entropy = compute_image_entropy(frame_gray)
+
+        frame_buffer.append((frame, frame_gray, frame_idx, time_ms, frame_diff, entropy))
 
         if len(frame_buffer) == args.maxlen:
             current_anchor_frame      = frame_buffer[qCenter][0]
@@ -338,6 +347,8 @@ def main():
 
             prev_anchor_diff = frame_buffer[qCenter][4]
             next_anchor_diff = frame_buffer[-1][4]
+            current_anchor_frame_gray_entropy = frame_buffer[qCenter][5]
+
 
             time_ms = frame_buffer[qCenter][3]
             frame_idx = frame_buffer[qCenter][2]
@@ -345,7 +356,7 @@ def main():
 
             if args.display:
                 disp = current_anchor_frame.copy()
-                cv2.putText(disp, f"Frame {frame_idx} at time {time_stamp} with ({prev_anchor_diff:5.2f},{next_anchor_diff:5.2f})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
+                cv2.putText(disp, f"Frame {frame_idx} at time {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f}, {current_anchor_frame_gray_entropy:5.2f})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
                 cv2.imshow("Current Frame", disp)
 
             scene_changed_from_past = prev_anchor_diff > args.past_scene_pcnt_pixels_changed
@@ -359,7 +370,7 @@ def main():
                     cv2.imshow("Slide CDT Monitor", combined_buffer)
 
                     disp = current_anchor_frame.copy()
-                    cv2.putText(disp, f"[SLIDE CDT] Frame {frame_idx} at time {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
+                    cv2.putText(disp, f"[SLIDE CDT] Frame {frame_idx} at time {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f}, {current_anchor_frame_gray_entropy:5.2f})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
                     cv2.imshow("Slide CDT", disp)
 
                 slide_pcnt_pixels_changed = 100.0
@@ -369,7 +380,7 @@ def main():
                     prev_slide_gray = current_anchor_frame_gray.copy()
 
                 if slide_pcnt_pixels_changed > args.slide_pcnt_pixels_changed:
-                    log(f"  --> [SLIDE CDT]    Frame {frame_idx} at time {time_stamp} with ({slide_pcnt_pixels_changed:5.2f}, {prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f})", always=True)
+                    log(f"  --> [SLIDE CDT]    Frame {frame_idx} at time {time_stamp} with ({slide_pcnt_pixels_changed:5.2f}, {prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f}, {current_anchor_frame_gray_entropy:5.2f})", always=True)
 
                     frame_h = current_anchor_frame_gray.shape[0]
                     video_thick = max(10, int(dynamic_footer_height * (frame_h / pdf_h)))
@@ -416,7 +427,7 @@ def main():
 
                     if args.display:
                         disp = current_anchor_frame.copy()
-                        cv2.putText(disp, f"Slide at frame {frame_idx} {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
+                        cv2.putText(disp, f"Slide at frame {frame_idx} {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f}, {current_anchor_frame_gray_entropy:5.2f})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
                         cv2.imshow("Slide", disp)
                         cv2.waitKey(5) # Short wait`
                     count = 0
