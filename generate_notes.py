@@ -103,6 +103,15 @@ def compute_percentage_of_pixels_changed(frame_gray, anchor_frame_gray, threshol
     percentage_changed = (changed_pixels / total_pixels) * 100.0
     return percentage_changed
 
+def compute_percentage_of_light_pixels(frame, threshold=220):
+    lower_bound = (threshold + 1, threshold + 1, threshold + 1)
+    upper_bound = (255, 255, 255)
+    mask = cv2.inRange(frame, lower_bound, upper_bound)
+    light_pixels = cv2.countNonZero(mask)
+    total_pixels = frame.shape[0] * frame.shape[1]
+    percentage_light = (light_pixels / total_pixels) * 100.0
+    return percentage_light
+
 def compute_image_entropy(frame_gray):
     """Computes the Shannon entropy of a grayscale image in bits."""
     hist = cv2.calcHist([frame_gray], [0], None, [256], [0, 256]).ravel()
@@ -334,9 +343,9 @@ def main():
         if len(frame_buffer) >= qCenter:
             frame_diff = compute_percentage_of_pixels_changed(frame_gray, frame_buffer[-qCenter][1], args.scene_threshold)
 
-        entropy = compute_image_entropy(frame_gray)
+        percent_light_pixels = compute_percentage_of_light_pixels(frame)
 
-        frame_buffer.append((frame, frame_gray, frame_idx, time_ms, frame_diff, entropy))
+        frame_buffer.append((frame, frame_gray, frame_idx, time_ms, frame_diff, percent_light_pixels))
 
         if len(frame_buffer) == args.maxlen:
             current_anchor_frame      = frame_buffer[qCenter][0]
@@ -347,7 +356,7 @@ def main():
 
             prev_anchor_diff = frame_buffer[qCenter][4]
             next_anchor_diff = frame_buffer[-1][4]
-            current_anchor_frame_gray_entropy = frame_buffer[qCenter][5]
+            current_anchor_frame_pcnt_light = frame_buffer[qCenter][5]
 
 
             time_ms = frame_buffer[qCenter][3]
@@ -356,21 +365,22 @@ def main():
 
             if args.display:
                 disp = current_anchor_frame.copy()
-                cv2.putText(disp, f"Frame {frame_idx} at time {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f}, {current_anchor_frame_gray_entropy:5.2f})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
+                cv2.putText(disp, f"Frame {frame_idx} at time {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f}, {current_anchor_frame_pcnt_light:5.2f}%)", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
                 cv2.imshow("Current Frame", disp)
 
             scene_changed_from_past = prev_anchor_diff > args.past_scene_pcnt_pixels_changed
             scene_changed_from_next = next_anchor_diff > args.next_scene_pcnt_pixels_changed
 
-            slide_cdt = not (scene_changed_from_past or scene_changed_from_next)
-
+#            slide_cdt = not (scene_changed_from_past or scene_changed_from_next)
+            slide_cdt = current_anchor_frame_pcnt_light >= 10.0
+           
             if slide_cdt:
                 if args.display and frame_buffer:
                     combined_buffer = cv2.hconcat([cv2.resize(f[0], (16*15, 9*15)) for f in frame_buffer])
                     cv2.imshow("Slide CDT Monitor", combined_buffer)
 
                     disp = current_anchor_frame.copy()
-                    cv2.putText(disp, f"[SLIDE CDT] Frame {frame_idx} at time {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f}, {current_anchor_frame_gray_entropy:5.2f})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
+                    cv2.putText(disp, f"[SLIDE CDT] Frame {frame_idx} at time {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f}, {current_anchor_frame_pcnt_light:5.2f}%)", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
                     cv2.imshow("Slide CDT", disp)
 
                 slide_pcnt_pixels_changed = 100.0
@@ -380,15 +390,15 @@ def main():
                     prev_slide_gray = current_anchor_frame_gray.copy()
 
                 if slide_pcnt_pixels_changed > args.slide_pcnt_pixels_changed:
-                    log(f"  --> [SLIDE CDT]    Frame {frame_idx} at time {time_stamp} with ({slide_pcnt_pixels_changed:5.2f}, {prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f}, {current_anchor_frame_gray_entropy:5.2f})", always=True)
+                    log(f"  --> [SLIDE CDT]    Frame {frame_idx} at time {time_stamp} with ({slide_pcnt_pixels_changed:5.2f}, {prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f}, {current_anchor_frame_pcnt_light:5.2f}%)", always=True)
 
-                    frame_h = current_anchor_frame_gray.shape[0]
-                    video_thick = max(10, int(dynamic_footer_height * (frame_h / pdf_h)))
-                    video_vocab, _ = get_footer_vocabulary(current_anchor_frame_gray, thick=video_thick)
+#                    frame_h = current_anchor_frame_gray.shape[0]
+#                    video_thick = max(10, int(dynamic_footer_height * (frame_h / pdf_h)))
+#                    video_vocab, _ = get_footer_vocabulary(current_anchor_frame_gray, thick=video_thick)
 
-                    # Filter video words against the Global PDF set
-                    global_overlap = video_vocab.intersection(global_pdf_vocabulary)
-
+#                    # Filter video words against the Global PDF set
+#                    global_overlap = video_vocab.intersection(global_pdf_vocabulary)
+                    global_overlap = ["1", "2"]
                     if len(global_overlap) >= 2:
                         slide_detected = True
                         new_slide_detected = True
@@ -427,7 +437,7 @@ def main():
 
                     if args.display:
                         disp = current_anchor_frame.copy()
-                        cv2.putText(disp, f"Slide at frame {frame_idx} {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f}, {current_anchor_frame_gray_entropy:5.2f})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
+                        cv2.putText(disp, f"Slide at frame {frame_idx} {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f}, {current_anchor_frame_pcnt_light:5.2f})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
                         cv2.imshow("Slide", disp)
                         cv2.waitKey(5) # Short wait`
                     count = 0
