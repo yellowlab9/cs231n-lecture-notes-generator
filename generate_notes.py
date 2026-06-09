@@ -223,6 +223,7 @@ def main():
     parser.add_argument("--slide_pcnt_pixels_changed", type=float, default=0.1)
     parser.add_argument("--maxlen", type=int, default=5)
     parser.add_argument("--max_same_slides", type=int, default=64)
+    parser.add_argument("--slide_pcnt_light", type=float, default=10.0)
     args = parser.parse_args()
 
     global VERBOSE, LOG_FILE
@@ -244,44 +245,6 @@ def main():
     pdf_path = download_pdf(args.pdf)
     video_path = download_media(args.video_url)
 
-    # 1. Build the Global Vocabulary (One-pass check)
-    log("Building Global Vocabulary from PDF footers...", always=True)
-    pages = convert_from_path(pdf_path, poppler_path=POPPLER_PATH, thread_count=os.cpu_count() or 4)
-
-    log("Calculating the mode of every pixel across PDF pages...", always=True)
-    mode_image = None
-    try:
-        pages_array = np.stack([np.array(pg) for pg in pages])
-        mode_image = kde_mode(pages_array)
-        cv2.imwrite("pdf_mode_background.png", cv2.cvtColor(mode_image, cv2.COLOR_RGB2BGR))
-        log("Saved the mode of PDF pages to 'pdf_mode_background.png'", always=True)
-    except Exception as e:
-        log(f"Failed to calculate pixel mode: {e}", always=True)
-
-    global_pdf_vocabulary = set()
-
-    dynamic_footer_height = 80
-    pdf_h = 1080
-    if mode_image is not None:
-        mode_image_gray = cv2.cvtColor(mode_image, cv2.COLOR_RGB2GRAY)
-        pdf_h = mode_image_gray.shape[0]
-        dynamic_footer_height = detect_footer_height(mode_image_gray)
-        log(f"Dynamically detected PDF footer height from mode image: {dynamic_footer_height}/{pdf_h} pixels", always=True)
-        vocab_set, _ = get_footer_vocabulary(mode_image_gray, thick=dynamic_footer_height)
-        global_pdf_vocabulary.update(vocab_set)
-    elif pages:
-        first_page_gray = cv2.cvtColor(np.array(pages[0]), cv2.COLOR_RGB2GRAY)
-        pdf_h = first_page_gray.shape[0]
-        dynamic_footer_height = detect_footer_height(first_page_gray)
-        log(f"Dynamically detected PDF footer height: {dynamic_footer_height}/{pdf_h} pixels", always=True)
-        for i, pg in enumerate(pages):
-            cv_img_gray = cv2.cvtColor(np.array(pg), cv2.COLOR_RGB2GRAY)
-            vocab_set, _ = get_footer_vocabulary(cv_img_gray, thick=dynamic_footer_height)
-            global_pdf_vocabulary.update(vocab_set)
-            log(f"--- Indexed PDF Page {i} ---", always=True)
-
-    log(f"Global vocabulary size: {len(global_pdf_vocabulary)} words.", always=True)
-
     try:
         container = av.open(video_path)
         video_stream = container.streams.video[0]
@@ -300,12 +263,7 @@ def main():
 
     if args.display:
         cv2.namedWindow("Slide", cv2.WINDOW_AUTOSIZE)
-
-        cv2.namedWindow("Slide CDT Monitor", cv2.WINDOW_AUTOSIZE)
-
-        cv2.namedWindow("Slide CDT", cv2.WINDOW_NORMAL)
-        cv2.resizeWindow("Slide CDT", 1280, 720)
-
+        cv2.namedWindow("Slide CDT", cv2.WINDOW_AUTOSIZE)
         cv2.namedWindow("Current Frame", cv2.WINDOW_AUTOSIZE)
 
     qLen = args.maxlen
@@ -326,13 +284,16 @@ def main():
     log(f"Scanning via Global Vocabulary Match (2-word minimum)", always=True)
 
     count = 0
+    frame_count = 0
     for frame_idx, av_frame in enumerate(container.decode(video=0)):
 
         # Skip B-frames (pict_type is 3 for B-frames in FFmpeg, or an enum with name 'B')
-        if getattr(av_frame.pict_type, 'name', None) == 'B' or av_frame.pict_type == 3:
+        if (getattr(av_frame.pict_type, 'name', None) == 'B' or av_frame.pict_type == 3):
             continue
-
-        isIntra = getattr(av_frame.pict_type, 'name', None) == 'I' or av_frame.pict_type == 1
+        
+        frame_count += 1
+        if (frame_count % 2) != 1:
+            continue
 
         frame = av_frame.to_ndarray(format='bgr24')
         frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -371,14 +332,11 @@ def main():
             scene_changed_from_past = prev_anchor_diff > args.past_scene_pcnt_pixels_changed
             scene_changed_from_next = next_anchor_diff > args.next_scene_pcnt_pixels_changed
 
-#            slide_cdt = not (scene_changed_from_past or scene_changed_from_next)
-            slide_cdt = current_anchor_frame_pcnt_light >= 10.0
-           
+            slide_cdt = not (scene_changed_from_past or scene_changed_from_next)
+            slide_cdt = slide_cdt and (current_anchor_frame_pcnt_light >= args.slide_pcnt_light)
+ 
             if slide_cdt:
                 if args.display and frame_buffer:
-                    combined_buffer = cv2.hconcat([cv2.resize(f[0], (16*15, 9*15)) for f in frame_buffer])
-                    cv2.imshow("Slide CDT Monitor", combined_buffer)
-
                     disp = current_anchor_frame.copy()
                     cv2.putText(disp, f"[SLIDE CDT] Frame {frame_idx} at time {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f}, {current_anchor_frame_pcnt_light:5.2f}%)", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
                     cv2.imshow("Slide CDT", disp)
@@ -389,24 +347,11 @@ def main():
                 else:
                     prev_slide_gray = current_anchor_frame_gray.copy()
 
+                slide_detected = True
                 if slide_pcnt_pixels_changed > args.slide_pcnt_pixels_changed:
                     log(f"  --> [SLIDE CDT]    Frame {frame_idx} at time {time_stamp} with ({slide_pcnt_pixels_changed:5.2f}, {prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f}, {current_anchor_frame_pcnt_light:5.2f}%)", always=True)
-
-#                    frame_h = current_anchor_frame_gray.shape[0]
-#                    video_thick = max(10, int(dynamic_footer_height * (frame_h / pdf_h)))
-#                    video_vocab, _ = get_footer_vocabulary(current_anchor_frame_gray, thick=video_thick)
-
-#                    # Filter video words against the Global PDF set
-#                    global_overlap = video_vocab.intersection(global_pdf_vocabulary)
-                    global_overlap = ["1", "2"]
-                    if len(global_overlap) >= 2:
-                        slide_detected = True
-                        new_slide_detected = True
-                    else:
-                        slide_detected = False
-                        new_slide_detected = False
+                    new_slide_detected = True
                 else:
-                    slide_detected = True
                     new_slide_detected = False
             else:
                 slide_detected = False
@@ -417,7 +362,13 @@ def main():
                     if same_slide_frame_first_img_path is not None:
                         log(f"  --> [SLIDE]        Frame {same_slide_frame_first_idx} to {same_slide_frame_last_idx} with total frames: {len(same_slide_frames)}", always=True)
                         log(f"                     {same_slide_frames_idx}", always=True)
-                        save_slide_mode(same_slide_frames, same_slide_frame_first_img_path)
+                        slide_mode = save_slide_mode(same_slide_frames, same_slide_frame_first_img_path)
+
+                        if args.display:
+                            disp = slide_mode.copy()
+                            cv2.putText(disp, f"[Slide] Frame {same_slide_frame_first_idx} at {same_slide_frame_first_time}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
+                            cv2.imshow("Slide", disp)
+                            cv2.waitKey(5) # Short wait`
 
                     clean_ts = time_stamp.replace(':', '-')
                     slide_name = f"slide_{frame_idx}_{clean_ts}.jpg"
@@ -435,21 +386,19 @@ def main():
 
                     prev_slide_gray = current_anchor_frame_gray.copy()
 
-                    if args.display:
-                        disp = current_anchor_frame.copy()
-                        cv2.putText(disp, f"Slide at frame {frame_idx} {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f}, {current_anchor_frame_pcnt_light:5.2f})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
-                        cv2.imshow("Slide", disp)
-                        cv2.waitKey(5) # Short wait`
+
                     count = 0
                 else:
                     num_same_slides = len(same_slide_frames)
                     if ((count % 4) == 0) and (num_same_slides < args.max_same_slides//4):
                         same_slide_frames.append(current_anchor_frame.copy())
                         same_slide_frames_idx.append(frame_idx)
-                    elif ((count % 8) == 0) and (num_same_slides < args.max_same_slides) :
+                    elif ((count % 8) == 0) and (num_same_slides < args.max_same_slides//2) :
                         same_slide_frames.append(current_anchor_frame.copy())
                         same_slide_frames_idx.append(frame_idx)
-
+                    elif ((count % 16) == 0) and (num_same_slides < args.max_same_slides) :
+                        same_slide_frames.append(current_anchor_frame.copy())
+                        same_slide_frames_idx.append(frame_idx)
                     same_slide_frame_last_idx = frame_idx
                     same_slide_frame_last_time = time_stamp
                 count += 1
