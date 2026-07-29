@@ -5,7 +5,6 @@ from collections import deque
 import argparse
 import requests
 import yt_dlp
-import pytesseract
 from pdf2image import convert_from_path
 import numpy as np
 import scipy.stats
@@ -21,9 +20,6 @@ except Exception:
     pass
 
 # --- WINDOWS CONFIGURATION ---
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-POPPLER_PATH = r'C:\Users\Cheung Auyeung\AppData\Local\Microsoft\WinGet\Packages\oschwartz10612.Poppler_Microsoft.Winget.Source_8wekyb3d8bbwe\poppler-25.07.0\Library\bin'
-
 VERBOSE = False
 LOG_FILE = None
 
@@ -44,57 +40,6 @@ def log(msg, always=False):
             with open(LOG_FILE, 'a', encoding='utf-8') as f:
                 f.write(log_msg + '\n')
 
-def clean_light_content(gray_img):
-    gray_img = cv2.GaussianBlur(gray_img, (3, 3), 0)
-    _, thresh = cv2.threshold(gray_img, 150, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-    return thresh
-
-def detect_footer_height(gray_img, default_thick=80, max_search_ratio=0.15):
-    """
-    Dynamically detects the height of the footer in a slide.
-    Looks for a horizontal line or the highest content in the bottom section.
-    """
-    h, w = gray_img.shape
-    search_h = int(h * max_search_ratio)
-    bottom_strip = gray_img[h-search_h:h, :]
-
-    # 1. Try to find a horizontal separator line using edge detection
-    edges = cv2.Canny(bottom_strip, 50, 150)
-    row_sums = np.sum(edges, axis=1) / 255.0
-
-    # If a row has edge pixels covering >25% of the slide width, it's likely a line
-    line_indices = np.where(row_sums > (w * 0.25))[0]
-    if len(line_indices) > 0:
-        return search_h - line_indices[0] + 5  # Add 5px padding
-
-    # 2. If no line, find the highest text/content bounding box
-    thresh = clean_light_content(bottom_strip)
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if contours:
-        valid_y = [cv2.boundingRect(c)[1] for c in contours if cv2.boundingRect(c)[2] > 10 and cv2.boundingRect(c)[3] > 10]
-        if valid_y:
-            return search_h - min(valid_y) + 10
-
-    return default_thick
-
-def get_footer_vocabulary(input_gray_image, thick=80):
-    """Extracts words strictly from the bottom 80 pixels."""
-    gray_image = input_gray_image.copy()
-    h, w = gray_image.shape
-    thick = min(thick, h)
-    footer_strip = gray_image[h-thick:h, 0:w]
-
-    # 1. Upscale the image slice (Tesseract prefers characters to be ~30 pixels high)
-    footer_strip = cv2.resize(footer_strip, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
-
-    thresh = clean_light_content(footer_strip)
-
-    # 2. Change PSM to 6 (Assume a single uniform block of text) to handle multi-line or slight misalignments
-    text = pytesseract.image_to_string(thresh, config='--oem 3 --psm 6').strip()
-    # Capture words 3+ chars long, ignoring case
-    words = set(re.findall(r'\b\w{3,}\b', text.lower()))
-    return words, text.replace('\n', ' ').strip()
-
 def compute_percentage_of_pixels_changed(frame_gray, anchor_frame_gray, threshold):
     diff = cv2.absdiff(frame_gray, anchor_frame_gray)
     _, thresh_diff = cv2.threshold(diff, threshold, 255, cv2.THRESH_BINARY)
@@ -111,13 +56,6 @@ def compute_percentage_of_light_pixels(frame, threshold=220):
     total_pixels = frame.shape[0] * frame.shape[1]
     percentage_light = (light_pixels / total_pixels) * 100.0
     return percentage_light
-
-def compute_image_entropy(frame_gray):
-    """Computes the Shannon entropy of a grayscale image in bits."""
-    hist = cv2.calcHist([frame_gray], [0], None, [256], [0, 256]).ravel()
-    hist = hist[hist > 0]
-    hist = hist / hist.sum()
-    return -np.sum(hist * np.log2(hist))
 
 def kde_mode(frames_list, bandwidth=20.0, max_samples=128):
     """
@@ -202,11 +140,33 @@ def download_media(url):
     video_id = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", url).group(1)
     base = f"lecture_{video_id}"
     video_path = f"{base}.mp4"
-    if not os.path.exists(video_path):
-        log(f"Downloading video...", always=True)
-        ydl_opts = {'format': 'bestvideo[ext=mp4][height<=1080]+bestaudio/best', 'merge_output_format': 'mp4', 'outtmpl': f'{base}.%(ext)s', 'quiet': True}
+
+    sub_file = None
+    for ext in ['.en.vtt', '.en.srt', '.vtt', '.srt']:
+        if os.path.exists(f"{base}{ext}"):
+            sub_file = f"{base}{ext}"
+            break
+
+    if not os.path.exists(video_path) or not sub_file:
+        log(f"Downloading video and transcript...", always=True)
+        ydl_opts = {
+            'format': 'bestvideo[ext=mp4][height<=1080]+bestaudio/best',
+            'merge_output_format': 'mp4',
+            'outtmpl': f'{base}.%(ext)s',
+            'quiet': True,
+            'writesubtitles': True,
+            'writeautomaticsub': True,
+            'subtitleslangs': ['en'],
+            'subtitlesformat': 'vtt/srt/best'
+        }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl: ydl.download([url])
-    return video_path
+
+        for ext in ['.en.vtt', '.en.srt', '.vtt', '.srt']:
+            if os.path.exists(f"{base}{ext}"):
+                sub_file = f"{base}{ext}"
+                break
+
+    return video_path, sub_file
 
 def main():
     parser = argparse.ArgumentParser()
@@ -217,7 +177,7 @@ def main():
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--scene_threshold", type=int, default=32)
-    parser.add_argument("--past_scene_pcnt_pixels_changed", type=float, default=5.0)
+    parser.add_argument("--past_scene_pcnt_pixels_changed", type=float, default=0.1)
     parser.add_argument("--next_scene_pcnt_pixels_changed", type=float, default=0.1)
     parser.add_argument("--slide_threshold", type=int, default=64)
     parser.add_argument("--slide_pcnt_pixels_changed", type=float, default=0.1)
@@ -243,7 +203,7 @@ def main():
     if not os.path.exists(SLIDE_DIR): os.makedirs(SLIDE_DIR)
 
     pdf_path = download_pdf(args.pdf)
-    video_path = download_media(args.video_url)
+    video_path, transcript_path = download_media(args.video_url)
 
     try:
         container = av.open(video_path)
@@ -280,6 +240,11 @@ def main():
 
     same_slide_frame_last_idx = None
     same_slide_frame_last_time = None
+
+    prev_slide_mode_gray = None
+    new_slide_mode = None
+    new_slide_mode_gray = None
+    slide_detected = False
 
     log(f"Scanning via Global Vocabulary Match (2-word minimum)", always=True)
 
@@ -336,20 +301,23 @@ def main():
             slide_cdt = slide_cdt and (current_anchor_frame_pcnt_light >= args.slide_pcnt_light)
  
             if slide_cdt:
-                if args.display and frame_buffer:
-                    disp = current_anchor_frame.copy()
-                    cv2.putText(disp, f"[SLIDE CDT] Frame {frame_idx} at time {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f}, {current_anchor_frame_pcnt_light:5.2f}%)", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
-                    cv2.imshow("Slide CDT", disp)
+                slide_cdt_gray_pcnt_pixels_changed = 100.0
+                if prev_slide_mode_gray is not None:
+                    slide_cdt_gray_pcnt_pixels_changed = compute_percentage_of_pixels_changed(prev_slide_mode_gray, current_anchor_frame_gray, args.slide_threshold)
 
                 slide_pcnt_pixels_changed = 100.0
                 if prev_slide_gray is not None:
                     slide_pcnt_pixels_changed = compute_percentage_of_pixels_changed(prev_slide_gray, current_anchor_frame_gray, args.slide_threshold)
+                    if args.display and frame_buffer:
+                        disp = current_anchor_frame.copy()
+                        cv2.putText(disp, f"[CDT] Frame {frame_idx} at {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f}, {current_anchor_frame_pcnt_light:5.2f}%, {slide_cdt_gray_pcnt_pixels_changed:5.2f})", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
+                        cv2.imshow("Slide CDT", disp)
                 else:
                     prev_slide_gray = current_anchor_frame_gray.copy()
 
                 slide_detected = True
                 if slide_pcnt_pixels_changed > args.slide_pcnt_pixels_changed:
-                    log(f"  --> [SLIDE CDT]    Frame {frame_idx} at time {time_stamp} with ({slide_pcnt_pixels_changed:5.2f}, {prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f}, {current_anchor_frame_pcnt_light:5.2f}%)", always=True)
+                    log(f"  --> [SLIDE CDT]    Frame {frame_idx} at time {time_stamp} with ({prev_anchor_diff:5.2f}, {next_anchor_diff:5.2f}, {current_anchor_frame_pcnt_light:5.2f}%, {slide_pcnt_pixels_changed:5.2f})", always=True)
                     new_slide_detected = True
                 else:
                     new_slide_detected = False
@@ -362,14 +330,20 @@ def main():
                     if same_slide_frame_first_img_path is not None:
                         log(f"  --> [SLIDE]        Frame {same_slide_frame_first_idx} to {same_slide_frame_last_idx} with total frames: {len(same_slide_frames)}", always=True)
                         log(f"                     {same_slide_frames_idx}", always=True)
-                        slide_mode = save_slide_mode(same_slide_frames, same_slide_frame_first_img_path)
+                        new_slide_mode = save_slide_mode(same_slide_frames, same_slide_frame_first_img_path)
+                        new_slide_mode_gray = cv2.cvtColor(new_slide_mode, cv2.COLOR_BGR2GRAY)
+
+                        slide_mode_gray_pcnt_pixels_changed = 100.0
+                        if prev_slide_mode_gray is not None:
+                            slide_mode_gray_pcnt_pixels_changed = compute_percentage_of_pixels_changed(prev_slide_mode_gray, new_slide_mode_gray, args.slide_threshold)
+
+                        prev_slide_mode_gray = new_slide_mode_gray.copy()
 
                         if args.display:
-                            disp = slide_mode.copy()
-                            cv2.putText(disp, f"[Slide] Frame {same_slide_frame_first_idx} at {same_slide_frame_first_time}", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
+                            disp = new_slide_mode.copy()
+                            cv2.putText(disp, f"[Slide] Frame {same_slide_frame_first_idx} at {same_slide_frame_first_time} with ({slide_mode_gray_pcnt_pixels_changed:5.2f}%)", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
                             cv2.imshow("Slide", disp)
                             cv2.waitKey(5) # Short wait`
-
                     clean_ts = time_stamp.replace(':', '-')
                     slide_name = f"slide_{frame_idx}_{clean_ts}.jpg"
 
