@@ -12,6 +12,8 @@ DEBUG   ?= --debug
 # Constructed URLs
 VIDEO_URL = "https://www.youtube.com/watch?v=$(VIDEO_ID)"
 
+PDF_URL = lecture_3.pdf
+
 # Phony targets
 .PHONY: notes clean
 
@@ -22,7 +24,7 @@ notes:
 	@echo "Video ID: $(VIDEO_ID)"
 	@echo "Model: $(MODEL)"
 	@echo "=========================================================="
-	make clean_slides
+#	make clean_slides
 	python generate_notes.py --video_url $(VIDEO_URL) --pdf $(PDF_URL) --model $(MODEL) $(VERBOSE) $(DISPLAY) $(DEBUG)
 
 # Clean up local environment

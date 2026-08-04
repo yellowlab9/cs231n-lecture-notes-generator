@@ -10,6 +10,7 @@ import numpy as np
 import scipy.stats
 import sys
 import av
+import ollama
 
 # --- WINDOWS DPI AWARENESS ---
 # Prevents OpenCV windows from being artificially blown up by Windows display scaling
@@ -105,15 +106,12 @@ def kde_mode(frames_list, bandwidth=20.0, max_samples=128):
     sample_frames_flat = sample_frames.reshape(sample_frames.shape[0], -1)
 
     try:
-        mode_result = scipy.stats.mode(sample_frames_flat, axis=0, keepdims=True)
+        # The keepdims arg is deprecated in newer scipy and behavior is default
+        mode_result = scipy.stats.mode(sample_frames_flat, axis=0)
     except TypeError:
         mode_result = scipy.stats.mode(sample_frames_flat, axis=0)
 
-    mode_flat = mode_result[0]
-    if getattr(mode_flat, 'ndim', 0) == 2 and mode_flat.shape[0] == 1:
-        mode_flat = mode_flat[0]
-
-    return mode_flat.reshape(original_shape).astype(np.uint8)
+    return mode_result.mode.reshape(original_shape).astype(np.uint8)
 
 def save_slide_mode(frames_list, output_path):
     """Calculates and saves the mode image of a list of frames to the specified path."""
@@ -148,9 +146,10 @@ def download_media(url):
             break
 
     if not os.path.exists(video_path) or not sub_file:
-        log(f"Downloading video and transcript...", always=True)
+        log(f"Downloading video and transcript from {url}...", always=True)
+        
         ydl_opts = {
-            'format': 'bestvideo[ext=mp4][height<=1080]+bestaudio/best',
+            'format': 'bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best',
             'merge_output_format': 'mp4',
             'outtmpl': f'{base}.%(ext)s',
             'quiet': True,
@@ -166,46 +165,139 @@ def download_media(url):
                 sub_file = f"{base}{ext}"
                 break
 
+        if not sub_file:
+            log("Warning: No transcript could be downloaded.", always=True)
+
     return video_path, sub_file
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--video_url", required=True)
-    parser.add_argument("--pdf", required=True)
-    parser.add_argument("--model", default="gemma4:latest")
-    parser.add_argument("--display", action="store_true")
-    parser.add_argument("-v", "--verbose", action="store_true")
-    parser.add_argument("--debug", action="store_true")
-    parser.add_argument("--scene_threshold", type=int, default=32)
-    parser.add_argument("--past_scene_pcnt_pixels_changed", type=float, default=0.1)
-    parser.add_argument("--next_scene_pcnt_pixels_changed", type=float, default=0.1)
-    parser.add_argument("--slide_threshold", type=int, default=64)
-    parser.add_argument("--slide_pcnt_pixels_changed", type=float, default=0.1)
-    parser.add_argument("--maxlen", type=int, default=5)
-    parser.add_argument("--max_same_slides", type=int, default=64)
-    parser.add_argument("--slide_pcnt_light", type=float, default=10.0)
-    args = parser.parse_args()
+# --- TRANSCRIPT PARSER ---
+def time_to_seconds(time_str):
+    time_str = time_str.strip()
+    h, m, s = time_str.replace(',', ':').replace('.', ':').split(':')[:3]
+    return int(h) * 3600 + int(m) * 60 + int(s)
 
-    global VERBOSE, LOG_FILE
-    VERBOSE = args.verbose or args.debug
+def parse_transcript(file_path, chunk_duration=180):
+    if not file_path or not os.path.exists(file_path):
+        return []
+        
+    log(f"Parsing transcript file: {file_path}", always=True)
+    with open(file_path, 'r', encoding='utf-8') as f:
+        lines = f.readlines()
+        
+    chunks = []
+    current_text = []
+    chunk_start = 0
+    last_end = 0
+    
+    for i, line in enumerate(lines):
+        if '-->' in line:
+            start_str, end_str = line.split('-->')
+            start_sec = time_to_seconds(start_str)
+            last_end = time_to_seconds(end_str)
+            
+            text_lines = []
+            j = i + 1
+            while j < len(lines) and lines[j].strip() != '' and '-->' not in lines[j]:
+                clean_text = re.sub(r'<[^>]+>', '', lines[j].strip())
+                if clean_text and not clean_text.isdigit():
+                    text_lines.append(clean_text)
+                j += 1
+                
+            text = " ".join(text_lines)
+            if not current_text:
+                chunk_start = start_sec
+                
+            current_text.append(text)
+            
+            if start_sec - chunk_start >= chunk_duration:
+                chunks.append({'start': chunk_start, 'end': last_end, 'text': " ".join(current_text)})
+                current_text = []
 
-    pdf_name = args.pdf.split("/")[-1] if args.pdf.startswith("http") else args.pdf
-    LOG_FILE = pdf_name.replace('.pdf', '_log.txt')
-    open(LOG_FILE, 'w', encoding='utf-8').close()  # initialize and clear previous run's log file
+    if current_text:
+        chunks.append({'start': chunk_start, 'end': last_end, 'text': " ".join(current_text)})
+        
+    log(f"  -> Created {len(chunks)} transcript chunks.")
+    return chunks
 
-    SLIDE_DIR = "slides"
-    SLIDE_CDT_DIR = "slides_cdt"
+# --- LLM CLEANUP (TEXT ONLY) ---
+def process_text_chunk(transcript_text, model_name):
+    if not transcript_text.strip(): return ""
+    
+    prompt = f"""
+    You are an expert technical editor writing a Markdown study guide for a deep learning lecture.
+    
+    Task:
+    1. Clean up the messy spoken transcript (fix errors, remove filler words).
+    2. Format all mathematical equations, loss functions, and variables in LaTeX ($...$ or $$...$$).
+    3. Do NOT add any conversational filler, introductions, or conclusions. 
+    4. Keep the Markdown text *extra close* to the exact wording, vocabulary, and flow of the original transcript. 
+    
+    Raw Transcript:
+    {transcript_text}
+    
+    Output ONLY the final, cleaned Markdown text.
+    """
+    try:
+        client = ollama.Client(host="http://127.0.0.1:11434")
+        response = client.generate(model=model_name, prompt=prompt)
+        return response['response'].strip()
+    except Exception as e:
+        log(f"Ollama Error: {e}", always=True)
+        return transcript_text
 
-    SLIDE_CSV_FILE = pdf_name.replace('.pdf', '_slide.csv')
-    with open(SLIDE_CSV_FILE, 'w', encoding='utf-8') as f:
-        f.write("img_path,frame_idx,time_stamp\n") # CSV Header
+def detect_slides(video_path, SLIDE_DIR, SLIDE_CSV_FILE, args):
+    """
+    Detects and extracts slides from a video file.
 
-    if not os.path.exists(SLIDE_DIR): os.makedirs(SLIDE_DIR)
+    Args:
+        video_path (str): Path to the video file.
+        SLIDE_DIR (str): Directory to save slide images.
+        SLIDE_CSV_FILE (str): Path to the CSV file for logging slide info.
+        args (argparse.Namespace): Command-line arguments.
 
-    pdf_path = download_pdf(args.pdf)
-    video_path, transcript_path = download_media(args.video_url)
+    Returns:
+        list: A list of dictionaries, where each dictionary contains information about a detected slide.
+    """
+    # --- CACHE CHECK ---
+    if os.path.exists(SLIDE_CSV_FILE) and os.path.getsize(SLIDE_CSV_FILE) > 0:
+        log(f"Found existing slide data file: {SLIDE_CSV_FILE}. Verifying contents...", always=True)
+        
+        slides_from_csv = []
+        all_files_exist = True
+        
+        with open(SLIDE_CSV_FILE, 'r', encoding='utf-8') as f:
+            next(f, None)  # Skip header
+            for line in f:
+                parts = line.strip().split(',')
+                if len(parts) == 3:
+                    img_path, _, _ = parts
+                    slides_from_csv.append(img_path)
+                    if not os.path.exists(img_path):
+                        all_files_exist = False
+                        log(f"  -> Mismatch: File '{img_path}' from CSV not found on disk.", always=True)
+                        break
+                else:
+                    all_files_exist = False
+                    log(f"  -> Mismatch: Malformed line in CSV: {line.strip()}", always=True)
+                    break
+
+        if all_files_exist:
+            files_in_dir = {os.path.join(SLIDE_DIR, f) for f in os.listdir(SLIDE_DIR) if f.endswith('.jpg')}
+            if files_in_dir == set(slides_from_csv):
+                log("  -> Verification successful. Loading slides from cache.", always=True)
+                slides_data = []
+                with open(SLIDE_CSV_FILE, 'r', encoding='utf-8') as f:
+                    next(f, None) # Skip header
+                    for line in f:
+                        img_path, frame_idx, time_stamp = line.strip().split(',')
+                        time_ms = sum(x * int(t) for x, t in zip([3600000, 60000, 1000], time_stamp.split('.')[0].split(':'))) + int(time_stamp.split('.')[1])
+                        slides_data.append({'img': img_path, 'time': time_ms / 1000, 'idx': int(frame_idx)})
+                return slides_data
+            else:
+                log("  -> Mismatch: Files in directory do not match CSV. Re-running detection.", always=True)
 
     try:
+        slides_data = []
         container = av.open(video_path)
         video_stream = container.streams.video[0]
         video_stream.thread_type = "AUTO" # Enable multithreaded decoding
@@ -331,13 +423,14 @@ def main():
                         log(f"  --> [SLIDE]        Frame {same_slide_frame_first_idx} to {same_slide_frame_last_idx} with total frames: {len(same_slide_frames)}", always=True)
                         log(f"                     {same_slide_frames_idx}", always=True)
                         new_slide_mode = save_slide_mode(same_slide_frames, same_slide_frame_first_img_path)
-                        new_slide_mode_gray = cv2.cvtColor(new_slide_mode, cv2.COLOR_BGR2GRAY)
 
-                        slide_mode_gray_pcnt_pixels_changed = 100.0
-                        if prev_slide_mode_gray is not None:
-                            slide_mode_gray_pcnt_pixels_changed = compute_percentage_of_pixels_changed(prev_slide_mode_gray, new_slide_mode_gray, args.slide_threshold)
+                        if new_slide_mode is not None:
+                            new_slide_mode_gray = cv2.cvtColor(new_slide_mode, cv2.COLOR_BGR2GRAY)
+                            slide_mode_gray_pcnt_pixels_changed = 100.0
+                            if prev_slide_mode_gray is not None:
+                                slide_mode_gray_pcnt_pixels_changed = compute_percentage_of_pixels_changed(prev_slide_mode_gray, new_slide_mode_gray, args.slide_threshold)
 
-                        prev_slide_mode_gray = new_slide_mode_gray.copy()
+                            prev_slide_mode_gray = new_slide_mode_gray.copy()
 
                         if args.display:
                             disp = new_slide_mode.copy()
@@ -350,6 +443,7 @@ def main():
                     img_path = f"{SLIDE_DIR}/{slide_name}"
                     with open(SLIDE_CSV_FILE, 'a', encoding='utf-8') as f:
                         f.write(f"{img_path},{frame_idx},{time_stamp}\n")
+                    slides_data.append({'img': img_path, 'time': time_ms / 1000, 'idx': frame_idx})
 
                     same_slide_frames = [current_anchor_frame.copy()]
                     same_slide_frame_first_img_path = img_path                    
@@ -385,6 +479,80 @@ def main():
 
     container.close()
     cv2.destroyAllWindows()
+    return slides_data
+
+def generate_study_guide(output_path, transcript_chunks, slides_data, model_name):
+    """
+    Generates and saves the final Markdown study guide.
+
+    Args:
+        output_path (str): The path to save the final .md file.
+        transcript_chunks (list): A list of transcript chunk dictionaries.
+        slides_data (list): A list of detected slide dictionaries.
+        model_name (str): The name of the Ollama model used for processing.
+    """
+    log("\nGenerating notes...", always=True)
+    notes = [f"# Lecture Study Guide\n\n*Generated using {model_name}*\n\n"]
+    for chunk in transcript_chunks:
+        start_m, start_s = divmod(int(chunk['start']), 60)
+        start_h, start_m = divmod(start_m, 60)
+        time_str = f"{start_h:02d}:{start_m:02d}:{start_s:02d}"
+        notes.append(f"### ⏱️ [{time_str}]\n\n")
+        chunk_slides = [s for s in slides_data if chunk['start'] <= s['time'] <= chunk['end']]
+        for s in chunk_slides:
+            img_path = s['img'].replace('\\', '/')
+            notes.append(f"![Slide {s['idx']}]({img_path})\n\n")
+        processed_text = process_text_chunk(chunk['text'], model_name)
+        notes.append(processed_text + "\n\n---\n\n")
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.writelines(notes)
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--video_url", required=True)
+    parser.add_argument("--pdf", required=True)
+    parser.add_argument("--model", default="gemma4:latest")
+    parser.add_argument("--display", action="store_true")
+    parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("--debug", action="store_true")
+    parser.add_argument("--scene_threshold", type=int, default=32)
+    parser.add_argument("--past_scene_pcnt_pixels_changed", type=float, default=0.1)
+    parser.add_argument("--next_scene_pcnt_pixels_changed", type=float, default=0.1)
+    parser.add_argument("--slide_threshold", type=int, default=64)
+    parser.add_argument("--slide_pcnt_pixels_changed", type=float, default=0.1)
+    parser.add_argument("--maxlen", type=int, default=5)
+    parser.add_argument("--max_same_slides", type=int, default=64)
+    parser.add_argument("--slide_pcnt_light", type=float, default=10.0)
+    args = parser.parse_args()
+
+    global VERBOSE, LOG_FILE
+    VERBOSE = args.verbose or args.debug
+
+    pdf_name = args.pdf.split("/")[-1] if args.pdf.startswith("http") else args.pdf
+    LOG_FILE = pdf_name.replace('.pdf', '_log.txt')
+    open(LOG_FILE, 'w', encoding='utf-8').close()  # initialize and clear previous run's log file
+
+    SLIDE_DIR = "slides"
+
+    SLIDE_CSV_FILE = pdf_name.replace('.pdf', '_slide.csv')
+    if not os.path.exists(SLIDE_CSV_FILE):
+        with open(SLIDE_CSV_FILE, 'w', encoding='utf-8') as f:
+            f.write("img_path,frame_idx,time_stamp\n") # CSV Header
+
+    if not os.path.exists(SLIDE_DIR): os.makedirs(SLIDE_DIR)
+
+    pdf_path = download_pdf(args.pdf)
+    video_path, transcript_path = download_media(args.video_url)
+
+
+    slides_data = detect_slides(video_path, SLIDE_DIR, SLIDE_CSV_FILE, args)
+    
+    transcript_chunks = parse_transcript(transcript_path, chunk_duration=180)
+    
+    output_md_path = pdf_name.replace('.pdf', '_study_guide.md')
+    generate_study_guide(output_md_path, transcript_chunks, slides_data, args.model)
+
     log("Complete!", always=True)
 
 if __name__ == "__main__":
