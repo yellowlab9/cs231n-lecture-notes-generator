@@ -6,6 +6,7 @@ import scipy.stats
 import sys
 import av
 from .utils import log, format_time
+from pathlib import Path
 
 def compute_percentage_of_pixels_changed(frame_gray, anchor_frame_gray, threshold):
     diff = cv2.absdiff(frame_gray, anchor_frame_gray)
@@ -92,6 +93,49 @@ def save_slide_mode(frames_list, output_path):
         log(f"      Failed to calculate mode for {output_path}: {e}", always=True)
     return mode_img
 
+def load_slides_from_cache(SLIDE_CSV_FILE, SLIDE_DIR):
+    """
+    Attempts to load slide data from a CSV cache file if it's valid.
+    Returns a list of slide data dictionaries if successful, otherwise None.
+    """
+    if not os.path.exists(SLIDE_CSV_FILE) or os.path.getsize(SLIDE_CSV_FILE) == 0:
+        return None
+
+    log(f"Found existing slide data file: {SLIDE_CSV_FILE}. Verifying contents...", always=True)
+    slides_from_csv = []
+    all_files_exist = True
+
+    with open(SLIDE_CSV_FILE, 'r', encoding='utf-8') as f:
+        next(f, None)  # Skip header
+        for line in f:
+            parts = line.strip().split(',')
+            if len(parts) != 3:
+                log(f"  -> Mismatch: Malformed line in CSV: {line.strip()}", always=True)
+                return None  # Cache is invalid
+
+            img_path, _, _ = parts
+            slides_from_csv.append(img_path)
+            if not os.path.exists(img_path):
+                log(f"  -> Mismatch: File '{img_path}' from CSV not found on disk.", always=True)
+                return None # Cache is invalid
+
+    # New check: Verify there are no duplicate slide paths in the CSV
+    if len(slides_from_csv) != len(set(slides_from_csv)):
+        log("  -> Mismatch: Duplicate entries found in CSV file. Re-running detection.", always=True)
+        return None # Cache is invalid
+
+    files_in_dir = {Path(SLIDE_DIR, f).as_posix() for f in os.listdir(SLIDE_DIR) if f.endswith('.jpg')}
+    if files_in_dir != set(slides_from_csv):
+        log("  -> Mismatch: Files in directory do not match CSV. Re-running detection.", always=True)
+        return None # Cache is invalid
+
+    log("  -> Verification successful. Loading slides from cache.", always=True)
+    slides_data = []
+    for img_path, frame_idx_str, time_stamp in (l.strip().split(',') for l in open(SLIDE_CSV_FILE).readlines()[1:]):
+        time_ms = sum(x * int(t) for x, t in zip([3600000, 60000, 1000], time_stamp.split('.')[0].split(':'))) + int(time_stamp.split('.')[1])
+        slides_data.append({'img': img_path, 'time': time_ms / 1000, 'idx': int(frame_idx_str)})
+    return slides_data
+
 def detect_slides(video_path, SLIDE_DIR, SLIDE_CSV_FILE, args):
     """
     Detects and extracts slides from a video file.
@@ -106,43 +150,11 @@ def detect_slides(video_path, SLIDE_DIR, SLIDE_CSV_FILE, args):
         list: A list of dictionaries, where each dictionary contains information about a detected slide.
     """
     # --- CACHE CHECK ---
-    if os.path.exists(SLIDE_CSV_FILE) and os.path.getsize(SLIDE_CSV_FILE) > 0:
-        log(f"Found existing slide data file: {SLIDE_CSV_FILE}. Verifying contents...", always=True)
-        
-        slides_from_csv = []
-        all_files_exist = True
-        
-        with open(SLIDE_CSV_FILE, 'r', encoding='utf-8') as f:
-            next(f, None)  # Skip header
-            for line in f:
-                parts = line.strip().split(',')
-                if len(parts) == 3:
-                    img_path, _, _ = parts
-                    slides_from_csv.append(img_path)
-                    if not os.path.exists(img_path):
-                        all_files_exist = False
-                        log(f"  -> Mismatch: File '{img_path}' from CSV not found on disk.", always=True)
-                        break
-                else:
-                    all_files_exist = False
-                    log(f"  -> Mismatch: Malformed line in CSV: {line.strip()}", always=True)
-                    break
+    cached_slides = load_slides_from_cache(SLIDE_CSV_FILE, SLIDE_DIR)
+    if cached_slides is not None:
+        return cached_slides
 
-        if all_files_exist:
-            files_in_dir = {os.path.join(SLIDE_DIR, f) for f in os.listdir(SLIDE_DIR) if f.endswith('.jpg')}
-            if files_in_dir == set(slides_from_csv):
-                log("  -> Verification successful. Loading slides from cache.", always=True)
-                slides_data = []
-                with open(SLIDE_CSV_FILE, 'r', encoding='utf-8') as f:
-                    next(f, None) # Skip header
-                    for line in f:
-                        img_path, frame_idx, time_stamp = line.strip().split(',')
-                        time_ms = sum(x * int(t) for x, t in zip([3600000, 60000, 1000], time_stamp.split('.')[0].split(':'))) + int(time_stamp.split('.')[1])
-                        slides_data.append({'img': img_path, 'time': time_ms / 1000, 'idx': int(frame_idx)})
-                return slides_data
-            else:
-                log("  -> Mismatch: Files in directory do not match CSV. Re-running detection.", always=True)
-
+    # --- VIDEO INITIALIZATION ---
     try:
         slides_data = []
         container = av.open(video_path)
@@ -287,7 +299,7 @@ def detect_slides(video_path, SLIDE_DIR, SLIDE_CSV_FILE, args):
                     clean_ts = time_stamp.replace(':', '-')
                     slide_name = f"slide_{frame_idx}_{clean_ts}.jpg"
 
-                    img_path = f"{SLIDE_DIR}/{slide_name}"
+                    img_path = Path(SLIDE_DIR, slide_name).as_posix()
                     with open(SLIDE_CSV_FILE, 'a', encoding='utf-8') as f:
                         f.write(f"{img_path},{frame_idx},{time_stamp}\n")
                     slides_data.append({'img': img_path, 'time': time_ms / 1000, 'idx': frame_idx})
