@@ -31,6 +31,7 @@ def main():
     parser.add_argument("--maxlen", type=int, default=5)
     parser.add_argument("--max_same_slides", type=int, default=64)
     parser.add_argument("--slide_pcnt_light", type=float, default=10.0)
+    parser.add_argument("--overlap_duration", type=int, default=30, help="Duration of overlap between text chunks in seconds.")
     args = parser.parse_args()
 
     utils.VERBOSE = args.verbose or args.debug
@@ -50,7 +51,7 @@ def main():
     pdf_path = download_pdf(args.pdf)
     video_path, transcript_path = download_media(args.video_url)
     slides_data = detect_slides(video_path, SLIDE_DIR, SLIDE_CSV_FILE, args)
-    transcript_chunks = parse_transcript(transcript_path, chunk_duration=180)
+    transcript_chunks = parse_transcript(transcript_path, chunk_duration=180, overlap_duration=args.overlap_duration)
     output_md_path = pdf_name.replace('.pdf', '_study_guide.md')
     generate_study_guide(output_md_path, transcript_chunks, slides_data, args.model)
 
