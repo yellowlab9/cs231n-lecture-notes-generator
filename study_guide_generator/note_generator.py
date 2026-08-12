@@ -1,3 +1,4 @@
+import re
 from .utils import log
 from .llm_processor import process_text_chunk
 import nltk
@@ -84,40 +85,68 @@ def generate_study_guide(output_path, transcript_chunks, slides_data, model_name
     # Ensure NLTK data is ready before processing
     ensure_nltk_punkt()
 
+    # 1. Create a timeline of paragraphs and slides.
     timeline_items = []
     total_chunks = len(transcript_chunks)
-
-    # 1. Process all chunks and add sentences to the timeline
     log(f"Processing {total_chunks} transcript chunks with LLM...", always=True)
     for i, chunk in enumerate(transcript_chunks):
         log(f"  -> Processing chunk {i + 1}/{total_chunks}...", always=True)
-        cleaned_text = process_text_chunk(chunk['text'], model_name)
-        cleaned_sentences = nltk.sent_tokenize(cleaned_text)
-        for sentence in cleaned_sentences:
-            est_time = get_sentence_timestamp(sentence, chunk)
-            timeline_items.append({'type': 'sentence', 'time': est_time, 'text': sentence})
+        cleaned_text_with_paragraphs = process_text_chunk(chunk['text'], model_name)
+        
+        # Split the LLM output into paragraphs.
+        paragraphs = [p.strip() for p in cleaned_text_with_paragraphs.split('\n\n') if p.strip()]
 
-    # 2. Add all slides to the timeline
-    log(f"Adding {len(slides_data)} slides to timeline...", always=True)
+        for p_text in paragraphs:
+            # Estimate the time of the paragraph by its first sentence.
+            try:
+                first_sentence = nltk.sent_tokenize(p_text)[0]
+                est_time = get_sentence_timestamp(first_sentence, chunk)
+                timeline_items.append({'type': 'paragraph', 'time': est_time, 'text': p_text})
+            except IndexError:
+                # Handle cases where a "paragraph" might be empty or just whitespace.
+                continue
+
+    # Add slides to the timeline
     for slide in slides_data:
         timeline_items.append({'type': 'slide', 'time': slide['time'], 'data': slide})
 
-    # 3. Sort the timeline and generate the markdown
-    log("Sorting timeline and writing to file...", always=True)
+    # Sort everything chronologically
     timeline_items.sort(key=lambda x: x['time'])
-    notes = [f"# Lecture Study Guide\n\n*Generated using {model_name}*\n\n"]
-    for item in timeline_items:
+
+    # 2. Filter the timeline to consolidate consecutive slides.
+    # When multiple slides appear in a row, only keep the last one.
+    log("Aligning slides and paragraphs...", always=True)
+    processed_timeline = []
+    i = 0
+    while i < len(timeline_items):
+        item = timeline_items[i]
         if item['type'] == 'slide':
+            # Look ahead to find the end of a consecutive block of slides
+            j = i + 1
+            while j < len(timeline_items) and timeline_items[j]['type'] == 'slide':
+                j += 1
+            # Add only the last slide from the block
+            processed_timeline.append(timeline_items[j - 1])
+            i = j # Move index past the processed block
+        else:
+            processed_timeline.append(item)
+            i += 1
+
+    # 3. Generate the markdown from the processed timeline.
+    log("Writing final study guide to file...", always=True)
+    notes = [f"# Lecture Study Guide\n\n*Generated using {model_name}*\n\n"]
+
+    for item in processed_timeline:
+        if item['type'] == 'slide':
+            # Add the slide image.
             slide = item['data']
             img_path = slide['img'].replace('\\', '/')
             notes.append(f"![Slide {slide['idx']}]({img_path})\n\n")
-        elif item['type'] == 'sentence':
-            time_sec = item['time']
-            start_m, start_s = divmod(int(time_sec), 60)
-            start_h, start_m = divmod(start_m, 60)
-            time_str = f"{start_h:02d}:{start_m:02d}:{start_s:02d}"
-            notes.append(f"**[{time_str}]** {item['text']}\n")
-
+        
+        elif item['type'] == 'paragraph':
+            # Add the paragraph text.
+            notes.append(item['text'] + "\n\n")
+        
     with open(output_path, "w", encoding="utf-8") as f:
         f.writelines(notes)
     log(f"Study guide saved to {output_path}", always=True)
