@@ -1,4 +1,5 @@
 import re
+from itertools import groupby
 from .utils import log
 from .llm_processor import process_text_chunk
 import nltk
@@ -37,7 +38,7 @@ def _get_timestamp_from_chunk_linear(cleaned_sentence, original_chunk):
     estimated_time = chunk_start_sec + (chunk_duration * progress)
     return estimated_time
 
-def get_sentence_timestamp(cleaned_sentence, original_chunk):
+def get_sentence_timestamp(cleaned_sentence, original_chunk, score_cutoff=50):
     """
     Finds the best timestamp for a cleaned sentence by fuzzy matching it against
     the original transcript's fine-grained segments.
@@ -51,8 +52,9 @@ def get_sentence_timestamp(cleaned_sentence, original_chunk):
     
     result = fuzzy_process.extractOne(cleaned_sentence, segment_texts, scorer=fuzz.token_sort_ratio)
     
-    if not result or result[1] < 50:
-        return original_chunk['start']
+    # If the match score is too low, it's unreliable. Return None to signal failure.
+    if not result or result[1] < score_cutoff:
+        return None
 
     best_match_text = result[0]
     segment_index = segment_texts.index(best_match_text)
@@ -77,7 +79,7 @@ def get_sentence_timestamp(cleaned_sentence, original_chunk):
     estimated_time = segment_start + (segment_duration * progress)
     return estimated_time
 
-def generate_study_guide(output_path, transcript_chunks, slides_data, model_name):
+def generate_study_guide(output_path, transcript_chunks, slides_data, model_name, fuzzy_score_threshold=50, llm_retries=3, llm_retry_delay=5):
     """
     Generates and saves the final Markdown study guide.
     """
@@ -87,23 +89,46 @@ def generate_study_guide(output_path, transcript_chunks, slides_data, model_name
 
     # 1. Create a timeline of paragraphs and slides.
     timeline_items = []
+
+    # A set to keep track of the first sentence of paragraphs we've already added.
+    # This prevents adding duplicate content from overlapping chunks.
+    processed_paragraph_starts = set()
+
     total_chunks = len(transcript_chunks)
     log(f"Processing {total_chunks} transcript chunks with LLM...", always=True)
     for i, chunk in enumerate(transcript_chunks):
         log(f"  -> Processing chunk {i + 1}/{total_chunks}...", always=True)
-        cleaned_text_with_paragraphs = process_text_chunk(chunk['text'], model_name)
+        cleaned_text_with_paragraphs = process_text_chunk(chunk['text'], model_name, retries=llm_retries, delay=llm_retry_delay)
         
         # Split the LLM output into paragraphs.
         paragraphs = [p.strip() for p in cleaned_text_with_paragraphs.split('\n\n') if p.strip()]
 
         for p_text in paragraphs:
-            # Estimate the time of the paragraph by its first sentence.
+            # Filter out markdown horizontal rules that the LLM might erroneously add.
+            if re.fullmatch(r'[\*\-\_]{3,}', p_text):
+                log(f"  -> Skipping horizontal rule artifact from LLM output: '{p_text}'", always=True)
+                continue
+
+            # Get a timestamp for the paragraph based on its first sentence.
             try:
                 first_sentence = nltk.sent_tokenize(p_text)[0]
-                est_time = get_sentence_timestamp(first_sentence, chunk)
+
+                # If we've already processed a paragraph starting with this sentence, skip it.
+                if first_sentence in processed_paragraph_starts:
+                    continue
+
+                est_time = get_sentence_timestamp(first_sentence, chunk, score_cutoff=fuzzy_score_threshold)
+
+                # If timestamping fails, it means the sentence is likely a hallucination or
+                # too heavily modified. Skip it to prevent incorrect ordering.
+                if est_time is None:
+                    log(f"  -> Could not find reliable timestamp for paragraph. Skipping.", always=True)
+                    continue
+
+                # Add the entire paragraph as a single timeline item
                 timeline_items.append({'type': 'paragraph', 'time': est_time, 'text': p_text})
+                processed_paragraph_starts.add(first_sentence)
             except IndexError:
-                # Handle cases where a "paragraph" might be empty or just whitespace.
                 continue
 
     # Add slides to the timeline
@@ -114,39 +139,25 @@ def generate_study_guide(output_path, transcript_chunks, slides_data, model_name
     timeline_items.sort(key=lambda x: x['time'])
 
     # 2. Filter the timeline to consolidate consecutive slides.
-    # When multiple slides appear in a row, only keep the last one.
+    # NOTE: The original logic to consolidate consecutive slides is disabled here
+    # to ensure all detected slides are included in the final output.
     log("Aligning slides and paragraphs...", always=True)
-    processed_timeline = []
-    i = 0
-    while i < len(timeline_items):
-        item = timeline_items[i]
-        if item['type'] == 'slide':
-            # Look ahead to find the end of a consecutive block of slides
-            j = i + 1
-            while j < len(timeline_items) and timeline_items[j]['type'] == 'slide':
-                j += 1
-            # Add only the last slide from the block
-            processed_timeline.append(timeline_items[j - 1])
-            i = j # Move index past the processed block
-        else:
-            processed_timeline.append(item)
-            i += 1
+    processed_timeline = timeline_items
 
     # 3. Generate the markdown from the processed timeline.
     log("Writing final study guide to file...", always=True)
-    notes = [f"# Lecture Study Guide\n\n*Generated using {model_name}*\n\n"]
+    # Initialize an empty list for notes. The header was removed as it's not part of the original transcript.
+    notes = []
 
+    # Iterate through the timeline and add items to the notes.
     for item in processed_timeline:
-        if item['type'] == 'slide':
-            # Add the slide image.
+        if item['type'] == 'paragraph':
+            notes.append(item['text'] + "\n\n")
+        elif item['type'] == 'slide':
             slide = item['data']
             img_path = slide['img'].replace('\\', '/')
             notes.append(f"![Slide {slide['idx']}]({img_path})\n\n")
-        
-        elif item['type'] == 'paragraph':
-            # Add the paragraph text.
-            notes.append(item['text'] + "\n\n")
-        
+
     with open(output_path, "w", encoding="utf-8") as f:
         f.writelines(notes)
     log(f"Study guide saved to {output_path}", always=True)
