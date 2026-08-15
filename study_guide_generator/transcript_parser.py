@@ -1,15 +1,24 @@
 import os
 import re
 import sys
+import html
 from .utils import log
 
 def time_to_seconds(time_str):
-    """Converts a 'HH:MM:SS.ms' or 'HH:MM:SS,ms' string to seconds."""
+    """Converts a 'HH:MM:SS.ms', 'MM:SS.ms', or comma-separated time string to seconds."""
     time_str = time_str.strip()
     parts = time_str.replace(',', '.').split('.')
-    h, m, s = map(int, parts[0].split(':'))
+    time_components = list(map(int, parts[0].split(':')))
+    if len(time_components) == 3:
+        h, m, s = time_components
+    elif len(time_components) == 2:
+        h, m, s = 0, time_components[0], time_components[1]
+    elif len(time_components) == 1:
+        h, m, s = 0, 0, time_components[0]
+    else:
+        return 0.0
     ms = int(parts[1]) if len(parts) > 1 else 0
-    return h * 3600 + m * 60 + s + ms / 1000.0
+    return h * 3600 + m * 60 + s + ms / (10 ** len(parts[1]) if len(parts) > 1 else 1000.0)
 
 def parse_transcript(file_path, chunk_duration=300, overlap_duration=60):
     """
@@ -50,7 +59,7 @@ def parse_transcript(file_path, chunk_duration=300, overlap_duration=60):
             text_lines = []
             j = i + 1
             while j < len(lines) and lines[j].strip() != '' and '-->' not in lines[j]:
-                clean_text = re.sub(r'<[^>]+>', '', lines[j].strip())
+                clean_text = html.unescape(re.sub(r'<[^>]+>', '', lines[j].strip()))
                 if clean_text and not clean_text.isdigit():
                     text_lines.append(clean_text)
                 j += 1

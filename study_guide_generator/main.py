@@ -10,7 +10,7 @@ except Exception:
     pass
 
 from . import utils
-from .downloader import download_pdf, download_media
+from .downloader import download_media
 from .slide_detector import detect_slides
 from .transcript_parser import parse_transcript
 from .llm_processor import check_ollama_server
@@ -18,14 +18,15 @@ from .note_generator import generate_study_guide
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generates a Markdown study guide from a video lecture and its corresponding PDF slides.",
+        description="Generates a Markdown study guide from a video lecture.",
         formatter_class=argparse.RawTextHelpFormatter
     )
 
     # --- Core Arguments ---
     core_group = parser.add_argument_group("Core Parameters")
-    core_group.add_argument("--video_url", required=True, help="YouTube URL of the lecture.")
-    core_group.add_argument("--pdf", required=True, help="URL or local path to the PDF slides.")
+    core_group.add_argument("--video_list_url", "--playlist_url", "--video_url", required=True, help="YouTube playlist, video list, or direct video URL.")
+    core_group.add_argument("--index", "--playlist_index", type=int, default=1, help="1-based index of the video in the playlist (default: 1).")
+    core_group.add_argument("--output_prefix", "--prefix", "--output_name", "--pdf", default=None, help="Prefix name for generated output files (e.g., lecture_3). Default: lecture_<index>.")
     core_group.add_argument("--model", default="gemma4:latest", help="Name of the local Ollama model to use for text cleaning.")
 
     # --- Transcript & Note Generation ---
@@ -57,8 +58,13 @@ def main():
 
     utils.VERBOSE = args.verbose or args.debug
 
-    pdf_name = args.pdf.split("/")[-1] if args.pdf.startswith("http") else args.pdf
-    utils.LOG_FILE = pdf_name.replace('.pdf', '_log.txt')
+    if args.output_prefix:
+        clean_prefix = os.path.basename(args.output_prefix.split('?')[0])
+        base_name = os.path.splitext(clean_prefix)[0]
+    else:
+        base_name = f"lecture_{args.index}"
+
+    utils.LOG_FILE = f"{base_name}_log.txt"
     open(utils.LOG_FILE, 'w', encoding='utf-8').close()
 
     # --- PRE-FLIGHT CHECKS ---
@@ -67,18 +73,17 @@ def main():
         sys.exit(1)
 
     SLIDE_DIR = "slides"
-    SLIDE_CSV_FILE = pdf_name.replace('.pdf', '_slide.csv')
+    SLIDE_CSV_FILE = f"{base_name}_slide.csv"
     if not os.path.exists(SLIDE_CSV_FILE):
         with open(SLIDE_CSV_FILE, 'w', encoding='utf-8') as f:
             f.write("img_path,frame_idx,time_stamp\n")
 
     if not os.path.exists(SLIDE_DIR): os.makedirs(SLIDE_DIR)
-
-    pdf_path = download_pdf(args.pdf)
-    video_path, transcript_path = download_media(args.video_url)
+ 
+    video_path, transcript_path = download_media(args.video_list_url, index=args.index)
     slides_data = detect_slides(video_path, SLIDE_DIR, SLIDE_CSV_FILE, args)
     transcript_chunks = parse_transcript(transcript_path, chunk_duration=args.chunk_duration, overlap_duration=args.overlap_duration)
-    output_md_path = pdf_name.replace('.pdf', '_study_guide.md')
+    output_md_path = f"{base_name}_study_guide.md"
     generate_study_guide(output_md_path, transcript_chunks, slides_data, args.model, args.fuzzy_score_threshold, args.llm_retries, args.llm_retry_delay)
 
     utils.log("Complete!", always=True)

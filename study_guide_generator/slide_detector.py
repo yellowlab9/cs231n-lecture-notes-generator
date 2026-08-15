@@ -124,6 +124,10 @@ def load_slides_from_cache(SLIDE_CSV_FILE, SLIDE_DIR):
         log("  -> Mismatch: Duplicate entries found in CSV file. Re-running detection.", always=True)
         return None # Cache is invalid
 
+    # An empty CSV (or header only) is not a valid slide cache
+    if not slides_from_csv:
+        return None
+
     files_in_dir = {Path(SLIDE_DIR, f).as_posix() for f in os.listdir(SLIDE_DIR) if f.endswith('.jpg')}
     if files_in_dir != set(slides_from_csv):
         log("  -> Mismatch: Files in directory do not match CSV. Re-running detection.", always=True)
@@ -131,9 +135,18 @@ def load_slides_from_cache(SLIDE_CSV_FILE, SLIDE_DIR):
 
     log("  -> Verification successful. Loading slides from cache.", always=True)
     slides_data = []
-    for img_path, frame_idx_str, time_stamp in (l.strip().split(',') for l in open(SLIDE_CSV_FILE).readlines()[1:]):
-        time_ms = sum(x * int(t) for x, t in zip([3600000, 60000, 1000], time_stamp.split('.')[0].split(':'))) + int(time_stamp.split('.')[1])
-        slides_data.append({'img': img_path, 'time': time_ms / 1000, 'idx': int(frame_idx_str)})
+    with open(SLIDE_CSV_FILE, 'r', encoding='utf-8') as f:
+        lines = f.readlines()[1:]
+    for l in lines:
+        parts = l.strip().split(',')
+        if len(parts) == 3:
+            img_path, frame_idx_str, time_stamp = parts
+            ts_parts = time_stamp.split('.')
+            time_hms = ts_parts[0].split(':')
+            hms_ms = sum(x * int(t) for x, t in zip([3600000, 60000, 1000], time_hms))
+            ms = int(ts_parts[1]) if len(ts_parts) > 1 else 0
+            time_ms = hms_ms + ms
+            slides_data.append({'img': img_path, 'time': time_ms / 1000.0, 'idx': int(frame_idx_str)})
     return slides_data
 
 def detect_slides(video_path, SLIDE_DIR, SLIDE_CSV_FILE, args):
@@ -158,14 +171,17 @@ def detect_slides(video_path, SLIDE_DIR, SLIDE_CSV_FILE, args):
     try:
         slides_data = []
         container = av.open(video_path)
+        if not container.streams.video:
+            log(f"Error: No video stream found in {video_path}", always=True)
+            sys.exit(1)
         video_stream = container.streams.video[0]
         video_stream.thread_type = "AUTO" # Enable multithreaded decoding
 
         fps = float(video_stream.average_rate) if video_stream.average_rate else 0.0
         fps1001 = int(round(fps * 1001))
         frame_count = video_stream.frames or 0
-        width = video_stream.codec_context.width
-        height = video_stream.codec_context.height
+        width = getattr(video_stream, 'width', 0) or getattr(getattr(video_stream, 'codec_context', None), 'width', 0)
+        height = getattr(video_stream, 'height', 0) or getattr(getattr(video_stream, 'codec_context', None), 'height', 0)
 
         log(f"Video properties (PyAV) - FPS*1001: {fps1001}, Frame Count: {frame_count}, Resolution: {width}x{height}", always=True)
     except Exception as e:
@@ -291,11 +307,11 @@ def detect_slides(video_path, SLIDE_DIR, SLIDE_CSV_FILE, args):
 
                             prev_slide_mode_gray = new_slide_mode_gray.copy()
 
-                        if args.display:
-                            disp = new_slide_mode.copy()
-                            cv2.putText(disp, f"[Slide] Frame {same_slide_frame_first_idx} at {same_slide_frame_first_time} with ({slide_mode_gray_pcnt_pixels_changed:5.2f}%)", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
-                            cv2.imshow("Slide", disp)
-                            cv2.waitKey(5) # Short wait`
+                            if args.display:
+                                disp = new_slide_mode.copy()
+                                cv2.putText(disp, f"[Slide] Frame {same_slide_frame_first_idx} at {same_slide_frame_first_time} with ({slide_mode_gray_pcnt_pixels_changed:5.2f}%)", (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 4)
+                                cv2.imshow("Slide", disp)
+                                cv2.waitKey(5) # Short wait`
                     clean_ts = time_stamp.replace(':', '-')
                     slide_name = f"slide_{frame_idx}_{clean_ts}.jpg"
 

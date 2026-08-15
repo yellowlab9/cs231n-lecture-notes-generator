@@ -1,3 +1,4 @@
+import os
 import re
 from itertools import groupby
 from .utils import log
@@ -8,14 +9,15 @@ from fuzzywuzzy import process as fuzzy_process, fuzz
 # --- One-time download for NLTK's sentence tokenizer ---
 def ensure_nltk_punkt():
     """Ensures the NLTK 'punkt' tokenizer data is downloaded."""
-    try:
-        # Check for both the main tokenizer data and the tab-separated resource
-        nltk.data.find('tokenizers/punkt')
-        nltk.data.find('tokenizers/punkt_tab')
-    except LookupError:
-        log("NLTK 'punkt' or 'punkt_tab' resource not found. Downloading necessary resources...", always=True)
-        nltk.download('punkt', quiet=True)
-        nltk.download('punkt_tab', quiet=True)
+    for resource in ['tokenizers/punkt', 'tokenizers/punkt_tab']:
+        try:
+            nltk.data.find(resource)
+        except LookupError:
+            pkg = resource.split('/')[-1]
+            try:
+                nltk.download(pkg, quiet=True)
+            except Exception:
+                pass
 
 def _get_timestamp_from_chunk_linear(cleaned_sentence, original_chunk):
     """Fallback estimator using linear interpolation over a large chunk."""
@@ -158,6 +160,9 @@ def generate_study_guide(output_path, transcript_chunks, slides_data, model_name
             img_path = slide['img'].replace('\\', '/')
             notes.append(f"![Slide {slide['idx']}]({img_path})\n\n")
 
+    parent_dir = os.path.dirname(output_path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
         f.writelines(notes)
     log(f"Study guide saved to {output_path}", always=True)

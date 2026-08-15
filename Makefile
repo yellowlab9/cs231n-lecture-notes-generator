@@ -1,6 +1,7 @@
 # Default variables (Override these from the command line)
 LECTURE ?= 3
-VIDEO_ID ?= dyNGd06MWn4
+INDEX ?= $(LECTURE)
+PLAYLIST_URL ?= https://www.youtube.com/playlist?list=PLoROMvodv4rOmsNzYBMe0gJY2XS8AQg16
 # Changed to latest as requested
 MODEL ?= gemma4:latest
 
@@ -9,10 +10,7 @@ VERBOSE_FLAG ?= --verbose
 DISPLAY_FLAG ?= --display
 DEBUG_FLAG   ?= --debug
 
-# Constructed URLs
-VIDEO_URL = https://www.youtube.com/watch?v=$(VIDEO_ID)
-
-PDF_URL = lecture_$(LECTURE).pdf
+OUTPUT_PREFIX ?= lecture_$(LECTURE)
 
 # Phony targets
 .PHONY: notes clean debug-args vscode-launch
@@ -20,17 +18,17 @@ PDF_URL = lecture_$(LECTURE).pdf
 # Default target
 notes:
 	@echo "=========================================================="
-	@echo "Generating Notes for Lecture $(LECTURE)"
-	@echo "Video ID: $(VIDEO_ID)"
+	@echo "Generating Notes for Lecture $(LECTURE) (Index $(INDEX))"
+	@echo "Playlist URL: $(PLAYLIST_URL)"
 	@echo "Model: $(MODEL)"
 	@echo "=========================================================="
-	python generate_notes.py --video_url "$(VIDEO_URL)" --pdf $(PDF_URL) --model $(MODEL) $(VERBOSE_FLAG) $(DISPLAY_FLAG) $(DEBUG_FLAG)
+	python generate_notes.py --video_list_url "$(PLAYLIST_URL)" --index $(INDEX) --output_prefix $(OUTPUT_PREFIX) --model $(MODEL) $(VERBOSE_FLAG) $(DISPLAY_FLAG) $(DEBUG_FLAG)
 
 # Clean up local environment
 clean:
 	@echo "Cleaning up media, slides, and markdown files..."
 	rm -rf slides/
-	rm -f lecture*.mp4 lecture*.vtt lecture*.srt
+	rm -f lecture*.mp4 lecture*.m4a lecture*.vtt lecture*.srt lecture*.part
 	rm -f lecture*.pdf lecture_slides.pdf semantic_study_notes.md
 	
 clean_slides:
@@ -41,7 +39,7 @@ clean_slides:
 # Helper to generate args for VSCode launch.json
 debug-args:
 	@echo "Copy the following into your launch.json 'args' array:"
-	@echo "--video_url", "\"$(VIDEO_URL)\"", "--pdf", "$(PDF_URL)", "--model", "$(MODEL)", "$(VERBOSE_FLAG)", "$(DISPLAY_FLAG)", "$(DEBUG_FLAG)" | sed 's/--[^ ]*/"&",/g' | sed 's/, *$$//'
+	@echo "--video_list_url", "\"$(PLAYLIST_URL)\"", "--index", "$(INDEX)", "--output_prefix", "$(OUTPUT_PREFIX)", "--model", "$(MODEL)", "$(VERBOSE_FLAG)", "$(DISPLAY_FLAG)", "$(DEBUG_FLAG)" | sed 's/--[^ ]*/"&",/g' | sed 's/, *$$//'
 
 # Generate VSCode launch.json file for debugging
 vscode-launch:
@@ -57,10 +55,12 @@ vscode-launch:
 	printf '            "program": "$${workspaceFolder}/generate_notes.py",\n' >> .vscode/launch.json && \
 	printf '            "console": "integratedTerminal",\n' >> .vscode/launch.json && \
 	printf '            "args": [\n' >> .vscode/launch.json && \
-	printf '                "--video_url",\n' >> .vscode/launch.json && \
-	printf '                "$(VIDEO_URL)",\n' >> .vscode/launch.json && \
-	printf '                "--pdf",\n' >> .vscode/launch.json && \
-	printf '                "$(PDF_URL)",\n' >> .vscode/launch.json && \
+	printf '                "--video_list_url",\n' >> .vscode/launch.json && \
+	printf '                "$(PLAYLIST_URL)",\n' >> .vscode/launch.json && \
+	printf '                "--index",\n' >> .vscode/launch.json && \
+	printf '                "$(INDEX)",\n' >> .vscode/launch.json && \
+	printf '                "--output_prefix",\n' >> .vscode/launch.json && \
+	printf '                "$(OUTPUT_PREFIX)",\n' >> .vscode/launch.json && \
 	printf '                "--model",\n' >> .vscode/launch.json && \
 	printf '                "$(MODEL)",\n' >> .vscode/launch.json && \
 	printf '                "$(VERBOSE_FLAG)",\n' >> .vscode/launch.json && \

@@ -1,6 +1,7 @@
 import ollama
 import sys
 import time
+import re
 from .utils import log
 
 # Create a single, reusable client instance to improve efficiency.
@@ -61,7 +62,9 @@ def process_text_chunk(transcript_text, model_name, retries=3, delay=5):
             if OLLAMA_CLIENT is None:
                 raise ConnectionError("Ollama client is not available.")
             response = OLLAMA_CLIENT.generate(model=model_name, prompt=prompt)
-            return response['response'].strip()
+            raw_text = response['response'] if isinstance(response, dict) else getattr(response, 'response', str(response))
+            cleaned = re.sub(r'<think>.*?</think>', '', raw_text, flags=re.DOTALL).strip()
+            return cleaned
         except Exception as e:
             last_exception = e
             log(f"Attempt {attempt + 1}/{retries} failed for chunk. Retrying in {delay}s...", always=True)
