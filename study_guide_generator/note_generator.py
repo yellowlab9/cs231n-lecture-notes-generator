@@ -2,7 +2,7 @@ import os
 import re
 from itertools import groupby
 from .utils import log
-from .llm_processor import process_text_chunk
+from .llm_processor import process_text_chunk, process_clean_transcript_chunk
 import nltk
 from fuzzywuzzy import process as fuzzy_process, fuzz
 
@@ -81,85 +81,134 @@ def get_sentence_timestamp(cleaned_sentence, original_chunk, score_cutoff=50):
     estimated_time = segment_start + (segment_duration * progress)
     return estimated_time
 
-def generate_study_guide(output_path, transcript_chunks, slides_data, model_name, fuzzy_score_threshold=50, llm_retries=3, llm_retry_delay=5):
+def generate_study_guide(output_path, transcript_chunks, slides_data, model_name, fuzzy_score_threshold=50, llm_retries=3, llm_retry_delay=5, is_creator_subtitle=False):
     """
     Generates and saves the final Markdown study guide.
+    Guarantees slides are placed strictly BETWEEN complete sentences,
+    immediately before the related sentence spoken during/after the slide appearance.
     """
     log("\nGenerating notes...", always=True)
-    # Ensure NLTK data is ready before processing
     ensure_nltk_punkt()
 
-    # 1. Create a timeline of paragraphs and slides.
-    timeline_items = []
-
-    # A set to keep track of the first sentence of paragraphs we've already added.
-    # This prevents adding duplicate content from overlapping chunks.
-    processed_paragraph_starts = set()
-
     total_chunks = len(transcript_chunks)
-    log(f"Processing {total_chunks} transcript chunks with LLM...", always=True)
-    for i, chunk in enumerate(transcript_chunks):
-        log(f"  -> Processing chunk {i + 1}/{total_chunks}...", always=True)
-        cleaned_text_with_paragraphs = process_text_chunk(chunk['text'], model_name, retries=llm_retries, delay=llm_retry_delay)
-        
-        # Split the LLM output into paragraphs.
-        paragraphs = [p.strip() for p in cleaned_text_with_paragraphs.split('\n\n') if p.strip()]
+    sentences = []
 
-        for p_text in paragraphs:
-            # Filter out markdown horizontal rules that the LLM might erroneously add.
-            if re.fullmatch(r'[\*\-\_]{3,}', p_text):
-                log(f"  -> Skipping horizontal rule artifact from LLM output: '{p_text}'", always=True)
-                continue
+    # 1. Extract all complete sentences with start and end timestamps
+    if is_creator_subtitle:
+        log(f"Formatting verbatim .en-US.vtt presentation ({total_chunks} chunks)...", always=True)
+        for i, chunk in enumerate(transcript_chunks):
+            log(f"  -> Formatting chunk {i + 1}/{total_chunks} (preserving verbatim text)...", always=True)
+            chunk_start = chunk['start']
+            chunk_end = chunk['end']
+            chunk_dur = max(1.0, chunk_end - chunk_start)
 
-            # Get a timestamp for the paragraph based on its first sentence.
-            try:
-                first_sentence = nltk.sent_tokenize(p_text)[0]
+            # Enhance presentation (LaTeX math & typography) while preserving exact text
+            formatted_text = process_clean_transcript_chunk(
+                chunk['text'],
+                model_name,
+                retries=llm_retries,
+                delay=llm_retry_delay
+            )
 
-                # If we've already processed a paragraph starting with this sentence, skip it.
-                if first_sentence in processed_paragraph_starts:
+            p_sentences = [s.strip() for s in nltk.sent_tokenize(formatted_text) if s.strip()]
+            num_s = max(1, len(p_sentences))
+            for s_idx, s_text in enumerate(p_sentences):
+                s_start = chunk_start + (chunk_dur * (s_idx / num_s))
+                s_end = chunk_start + (chunk_dur * ((s_idx + 1) / num_s))
+                sentences.append({
+                    'text': s_text,
+                    'start': s_start,
+                    'end': s_end
+                })
+    else:
+        log(f"Processing {total_chunks} transcript chunks with LLM [Auto-generated Captions]...", always=True)
+        processed_sentence_starts = set()
+
+        for i, chunk in enumerate(transcript_chunks):
+            log(f"  -> Processing chunk {i + 1}/{total_chunks}...", always=True)
+            cleaned_text = process_text_chunk(chunk['text'], model_name, retries=llm_retries, delay=llm_retry_delay)
+            paragraphs = [p.strip() for p in cleaned_text.split('\n\n') if p.strip()]
+
+            for p_text in paragraphs:
+                if re.fullmatch(r'[\*\-\_]{3,}', p_text):
                     continue
 
-                est_time = get_sentence_timestamp(first_sentence, chunk, score_cutoff=fuzzy_score_threshold)
+                p_sentences = nltk.sent_tokenize(p_text)
+                for s_text in p_sentences:
+                    s_clean = s_text.strip()
+                    if not s_clean or s_clean in processed_sentence_starts:
+                        continue
 
-                # If timestamping fails, it means the sentence is likely a hallucination or
-                # too heavily modified. Skip it to prevent incorrect ordering.
-                if est_time is None:
-                    log(f"  -> Could not find reliable timestamp for paragraph. Skipping.", always=True)
-                    continue
+                    est_time = get_sentence_timestamp(s_clean, chunk, score_cutoff=fuzzy_score_threshold)
+                    if est_time is None:
+                        continue
 
-                # Add the entire paragraph as a single timeline item
-                timeline_items.append({'type': 'paragraph', 'time': est_time, 'text': p_text})
-                processed_paragraph_starts.add(first_sentence)
-            except IndexError:
-                continue
+                    sentences.append({
+                        'text': s_clean,
+                        'start': est_time,
+                        'end': est_time + 4.0
+                    })
+                    processed_sentence_starts.add(s_clean)
 
-    # Add slides to the timeline
-    for slide in slides_data:
-        timeline_items.append({'type': 'slide', 'time': slide['time'], 'data': slide})
+    # 2. Interleave slides strictly BETWEEN complete sentences (before related sentence)
+    log("Aligning slides between sentence boundaries...", always=True)
+    sorted_slides = sorted(slides_data, key=lambda s: s['time'])
+    slide_idx = 0
+    num_slides = len(sorted_slides)
 
-    # Sort everything chronologically
-    timeline_items.sort(key=lambda x: x['time'])
-
-    # 2. Filter the timeline to consolidate consecutive slides.
-    # NOTE: The original logic to consolidate consecutive slides is disabled here
-    # to ensure all detected slides are included in the final output.
-    log("Aligning slides and paragraphs...", always=True)
-    processed_timeline = timeline_items
-
-    # 3. Generate the markdown from the processed timeline.
-    log("Writing final study guide to file...", always=True)
-    # Initialize an empty list for notes. The header was removed as it's not part of the original transcript.
     notes = []
+    current_p_sentences = []
 
-    # Iterate through the timeline and add items to the notes.
-    for item in processed_timeline:
-        if item['type'] == 'paragraph':
-            notes.append(item['text'] + "\n\n")
-        elif item['type'] == 'slide':
-            slide = item['data']
-            img_path = slide['img'].replace('\\', '/')
-            notes.append(f"![Slide {slide['idx']}]({img_path})\n\n")
+    def flush_paragraph():
+        nonlocal current_p_sentences
+        if current_p_sentences:
+            p_str = " ".join(current_p_sentences).strip()
+            if p_str:
+                notes.append(p_str + "\n\n")
+            current_p_sentences = []
 
+    for s_idx, sent in enumerate(sentences):
+        sent_text = sent['text'].strip()
+        if not sent_text:
+            continue
+        sent_end = sent['end']
+
+        # Collect any slides that appeared before or during this sentence
+        slides_to_insert = []
+        while slide_idx < num_slides:
+            slide = sorted_slides[slide_idx]
+            # Place slide before this sentence if slide time is at or before this sentence's end
+            if s_idx == len(sentences) - 1 or slide['time'] <= sent_end:
+                slides_to_insert.append(slide)
+                slide_idx += 1
+            else:
+                break
+
+        if slides_to_insert:
+            flush_paragraph()
+            for sl in slides_to_insert:
+                img_path = sl['img'].replace('\\', '/')
+                notes.append(f"![Slide {sl['idx']}]({img_path})\n\n")
+
+        current_p_sentences.append(sent_text)
+
+        # Form readable paragraphs (3-4 sentences or ~350-500 chars)
+        combined_p = " ".join(current_p_sentences)
+        if len(current_p_sentences) >= 4 or len(combined_p) >= 350:
+            flush_paragraph()
+
+    # Flush any remaining sentences
+    flush_paragraph()
+
+    # Append any remaining slides after speech ends
+    while slide_idx < num_slides:
+        sl = sorted_slides[slide_idx]
+        img_path = sl['img'].replace('\\', '/')
+        notes.append(f"![Slide {sl['idx']}]({img_path})\n\n")
+        slide_idx += 1
+
+    # 3. Write final markdown study guide
+    log("Writing final study guide to file...", always=True)
     parent_dir = os.path.dirname(output_path)
     if parent_dir:
         os.makedirs(parent_dir, exist_ok=True)

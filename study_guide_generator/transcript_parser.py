@@ -98,16 +98,20 @@ def parse_transcript(file_path, chunk_duration=300, overlap_duration=60):
         # If we've reached the end, stop.
         if end_idx >= len(all_segments) - 1: break
 
-        # Determine the start of the next chunk by looking back from the end of the current one.
-        next_chunk_start_time = chunk_segments[-1]['end'] - overlap_duration
-        
-        # Find the segment index that is closest to (but not after) the desired start time for the overlap.
-        next_start_idx = end_idx
-        while next_start_idx > current_idx and all_segments[next_start_idx]['start'] > next_chunk_start_time:
-            next_start_idx -= 1
-        
-        # Ensure we always move forward
-        current_idx = next_start_idx if next_start_idx > current_idx else end_idx + 1
+        if overlap_duration <= 0:
+            current_idx = end_idx + 1
+        else:
+            # Determine the start of the next chunk by looking back from the end of the current one.
+            next_chunk_start_time = chunk_segments[-1]['end'] - overlap_duration
+            
+            # Find the segment index that is closest to (but not after) the desired start time for the overlap.
+            next_start_idx = end_idx
+            while next_start_idx > current_idx and all_segments[next_start_idx]['start'] > next_chunk_start_time:
+                next_start_idx -= 1
+            
+            # Ensure we always move forward
+            current_idx = next_start_idx if next_start_idx > current_idx else end_idx + 1
 
-    log(f"  -> Created {len(chunks)} overlapping transcript chunks.")
+    mode_str = "non-overlapping" if overlap_duration <= 0 else "overlapping"
+    log(f"  -> Created {len(chunks)} {mode_str} transcript chunks.")
     return chunks

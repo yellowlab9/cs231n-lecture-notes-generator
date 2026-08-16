@@ -16,32 +16,103 @@ def _find_subtitle_file(base):
             return os.path.join(dirname, fname) if dirname != '.' else fname
     return None
 
-def download_media(playlist_url, index=1):
+def download_subtitles(playlist_url, index=1):
     """
-    Downloads the video and subtitles for a specific item in a playlist.
-    Returns (video_path, sub_file_path).
+    Downloads subtitles only. If creator-uploaded 'en-US' is available, downloads only 'en-US'.
+    Returns (sub_file_path, is_creator_subtitle).
+    """
+    index = max(1, int(index))
+    base = f"lecture_{index:02d}"
+
+    # Check local cache
+    sub_file = _find_subtitle_file(base)
+    if sub_file:
+        is_creator = sub_file.endswith('.en-US.vtt') or sub_file.endswith('.en-US.srt')
+        log(f"[*] Subtitle file '{sub_file}' found locally (Creator uploaded: {is_creator}). Skipping download.", always=True)
+        return sub_file, is_creator
+
+    log(f"Checking and downloading subtitles for item #{index:02d}...", always=True)
+
+    # 1. Probe available subtitles
+    ydl_opts_probe = {
+        'playlist_items': str(index),
+        'extract_flat': False,
+        'quiet': True,
+    }
+
+    sub_lang = 'en'
+    write_manual = False
+    write_auto = True
+    is_creator_subtitle = False
+
+    with yt_dlp.YoutubeDL(ydl_opts_probe) as ydl:
+        try:
+            info = ydl.extract_info(str(playlist_url).strip(), download=False)
+            if info:
+                entries = [e for e in (info.get('entries') or []) if e]
+                target = entries[0] if entries else info
+                manual_subs = target.get('subtitles') or {}
+                if 'en-US' in manual_subs:
+                    sub_lang = 'en-US'
+                    write_manual = True
+                    write_auto = False
+                    is_creator_subtitle = True
+                    log("  -> Creator-uploaded 'en-US' subtitles detected.", always=True)
+                elif 'en' in manual_subs:
+                    sub_lang = 'en'
+                    write_manual = True
+                    write_auto = False
+                    is_creator_subtitle = True
+                    log("  -> Creator-uploaded 'en' subtitles detected.", always=True)
+                else:
+                    log("  -> Using auto-generated captions.", always=True)
+        except Exception as e:
+            log(f"Subtitle probe warning: {e}. Falling back to default.", always=True)
+
+    # 2. Download selected subtitle
+    ydl_opts_sub = {
+        'skip_download': True,
+        'outtmpl': f'{base}.%(ext)s',
+        'playlist_items': str(index),
+        'writesubtitles': write_manual,
+        'writeautomaticsub': write_auto,
+        'subtitleslangs': [sub_lang],
+        'subtitlesformat': 'vtt/srt/best',
+        'quiet': True,
+        'overwrites': False,
+        'ignoreerrors': True,
+        'windowsfilenames': True,
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts_sub) as ydl:
+        ydl.extract_info(str(playlist_url).strip(), download=True)
+
+    sub_file = _find_subtitle_file(base)
+    if not sub_file:
+        log("Warning: No transcript could be downloaded.", always=True)
+
+    return sub_file, is_creator_subtitle
+
+def download_video(playlist_url, index=1):
+    """
+    Downloads only the video and audio stream for a specific playlist item.
+    Returns video_path.
     """
     index = max(1, int(index))
     base = f"lecture_{index:02d}"
     video_path = f"{base}.mp4"
 
-    # Skip download if already cached locally
-    sub_file = _find_subtitle_file(base)
-    if os.path.exists(video_path) and sub_file:
-        log(f"[*] Media for {base} found locally. Skipping download.", always=True)
-        return video_path, sub_file
+    if os.path.exists(video_path):
+        log(f"[*] Video '{video_path}' found locally. Skipping download.", always=True)
+        return video_path
 
-    log(f"Fetching video and transcript (item #{index:02d}) from playlist...", always=True)
+    log(f"Downloading video (item #{index:02d}) from playlist...", always=True)
 
-    ydl_opts = {
+    ydl_opts_vid = {
         'format': 'bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         'merge_output_format': 'mp4',
         'outtmpl': f'{base}.%(ext)s',
         'playlist_items': str(index),
-        'writesubtitles': True,
-        'writeautomaticsub': True,
-        'subtitleslangs': ['en', 'en-US'],
-        'subtitlesformat': 'vtt/srt/best',
         'quiet': True,
         'overwrites': False,
         'ignoreerrors': True,
@@ -49,12 +120,28 @@ def download_media(playlist_url, index=1):
         'windowsfilenames': True,
     }
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+    with yt_dlp.YoutubeDL(ydl_opts_vid) as ydl:
         ydl.extract_info(str(playlist_url).strip(), download=True)
 
+    return video_path
+
+def download_media(playlist_url, index=1):
+    """
+    Downloads subtitles and video separately for a specific playlist item.
+    Skips downloading if the video and subtitle files are already cached locally.
+    Returns (video_path, sub_file_path, is_creator_subtitle).
+    """
+    index = max(1, int(index))
+    base = f"lecture_{index:02d}"
+    video_path = f"{base}.mp4"
     sub_file = _find_subtitle_file(base)
 
-    if not sub_file:
-        log("Warning: No transcript could be downloaded.", always=True)
+    # Fast check: if both video and transcript are already downloaded, skip completely
+    if os.path.exists(video_path) and sub_file:
+        is_creator = sub_file.endswith('.en-US.vtt') or sub_file.endswith('.en-US.srt')
+        log(f"[*] Media for {base} already found locally ('{video_path}', '{sub_file}'). Skipping all downloads.", always=True)
+        return video_path, sub_file, is_creator
 
-    return video_path, sub_file
+    sub_file, is_creator_subtitle = download_subtitles(playlist_url, index)
+    video_path = download_video(playlist_url, index)
+    return video_path, sub_file, is_creator_subtitle

@@ -25,6 +25,47 @@ def check_ollama_server():
         log("Please ensure the Ollama application is running before starting the script.", always=True)
         return False
 
+def process_clean_transcript_chunk(transcript_text, model_name, retries=3, delay=5):
+    """
+    Minimal-touch formatter for high-quality creator subtitles (.en-US.vtt).
+    Preserves verbatim wording while formatting LaTeX math ($W$, $b$, $x_i$, $L_1$)
+    and structuring clean paragraphs.
+    """
+    if not transcript_text.strip():
+        return ""
+
+    prompt_template = """
+    You are an expert technical editor creating a Markdown study guide from a video lecture transcript. Your goal is to make the text clean, articulate, and highly readable while staying faithful to the speaker's explanations and tone.
+
+    Guidelines:
+    1. **Light Rephrasing for Readability:** Light rephrasing is encouraged to convert spoken speech into smooth, professional written prose. Fix run-on sentences, awkward speech transitions, and minor grammar issues. Do NOT heavily summarize or remove technical details, explanations, or examples.
+    2. **Format Math as LaTeX:** Convert all mathematical symbols, variables, loss functions, vectors, and Greek letters into LaTeX (e.g., $W$, $b$, $x_i$, $\hat{y}$, $\alpha$, $\lambda$, $L_1$, $L_2$, $$...$$).
+    3. **Paragraph Structure:** Organize the text into logical, readable paragraphs of 2-4 sentences each.
+    4. **Output Only Markdown:** Output only the cleaned, polished Markdown text. Do not include commentary, meta-talk, or extra header tags.
+
+    Lecture Transcript:
+    __TRANSCRIPT_PLACEHOLDER__
+
+    Polished Markdown:
+    """
+    prompt = prompt_template.replace('__TRANSCRIPT_PLACEHOLDER__', transcript_text)
+
+    for attempt in range(retries):
+        try:
+            if OLLAMA_CLIENT is None:
+                raise ConnectionError("Ollama client is not available.")
+            response = OLLAMA_CLIENT.generate(model=model_name, prompt=prompt)
+            raw_text = response['response'] if isinstance(response, dict) else getattr(response, 'response', str(response))
+            cleaned = re.sub(r'<think>.*?</think>', '', raw_text, flags=re.DOTALL).strip()
+            if cleaned:
+                return cleaned
+        except Exception as e:
+            log(f"Attempt {attempt + 1}/{retries} failed for chunk. Retrying in {delay}s...", always=True)
+            time.sleep(delay)
+
+    # Fallback to verbatim text if LLM call fails
+    return transcript_text
+
 def process_text_chunk(transcript_text, model_name, retries=3, delay=5):
     if not transcript_text.strip():
         return ""

@@ -62,7 +62,7 @@ def main():
         clean_prefix = os.path.basename(args.output_prefix.split('?')[0])
         base_name = os.path.splitext(clean_prefix)[0]
     else:
-        base_name = f"lecture_{args.index}"
+        base_name = f"lecture_{args.index:02d}"
 
     utils.LOG_FILE = f"{base_name}_log.txt"
     open(utils.LOG_FILE, 'w', encoding='utf-8').close()
@@ -79,12 +79,21 @@ def main():
             f.write("img_path,frame_idx,time_stamp\n")
 
     if not os.path.exists(SLIDE_DIR): os.makedirs(SLIDE_DIR)
- 
-    video_path, transcript_path = download_media(args.video_list_url, index=args.index)
+    video_path, transcript_path, is_creator_subtitle = download_media(args.video_list_url, index=args.index)
     slides_data = detect_slides(video_path, SLIDE_DIR, SLIDE_CSV_FILE, args)
-    transcript_chunks = parse_transcript(transcript_path, chunk_duration=args.chunk_duration, overlap_duration=args.overlap_duration)
+    overlap = 0 if is_creator_subtitle else args.overlap_duration
+    transcript_chunks = parse_transcript(transcript_path, chunk_duration=args.chunk_duration, overlap_duration=overlap)
     output_md_path = f"{base_name}_study_guide.md"
-    generate_study_guide(output_md_path, transcript_chunks, slides_data, args.model, args.fuzzy_score_threshold, args.llm_retries, args.llm_retry_delay)
+    generate_study_guide(
+        output_md_path,
+        transcript_chunks,
+        slides_data,
+        args.model,
+        args.fuzzy_score_threshold,
+        args.llm_retries,
+        args.llm_retry_delay,
+        is_creator_subtitle=is_creator_subtitle
+    )
 
     utils.log("Complete!", always=True)
 
