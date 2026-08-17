@@ -11,6 +11,7 @@ DISPLAY_FLAG ?= --display
 DEBUG_FLAG   ?= --debug
 
 OUTPUT_PREFIX ?= lecture_$(LECTURE)
+IMG_WIDTH ?= 60%
 
 # Phony targets
 .PHONY: notes clean debug-args vscode-launch
@@ -21,8 +22,9 @@ notes:
 	@echo "Generating Notes for Lecture $(LECTURE) (Index $(INDEX))"
 	@echo "Playlist URL: $(PLAYLIST_URL)"
 	@echo "Model: $(MODEL)"
+	@echo "Image Width: $(IMG_WIDTH)"
 	@echo "=========================================================="
-	python generate_notes.py --video_list_url "$(PLAYLIST_URL)" --index $(INDEX) --output_prefix $(OUTPUT_PREFIX) --model $(MODEL) $(VERBOSE_FLAG) $(DISPLAY_FLAG) $(DEBUG_FLAG)
+	python generate_notes.py --video_list_url "$(PLAYLIST_URL)" --index $(INDEX) --output_prefix $(OUTPUT_PREFIX) --model $(MODEL) --img_width $(IMG_WIDTH) $(VERBOSE_FLAG) $(DISPLAY_FLAG) $(DEBUG_FLAG)
 
 # Clean up local environment
 clean:

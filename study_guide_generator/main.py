@@ -36,6 +36,7 @@ def main():
     note_group.add_argument("--fuzzy_score_threshold", type=int, default=50, help="Minimum score (0-100) for fuzzy matching sentences to timestamps.")
     note_group.add_argument("--llm_retries", type=int, default=3, help="Number of times to retry a failed LLM request.")
     note_group.add_argument("--llm_retry_delay", type=int, default=5, help="Delay in seconds between LLM retries.")
+    note_group.add_argument("--img_width", "--slide_width", default="60%", help="Percentage width of slide images in the markdown output (default: 60%).")
 
     # --- Slide Detection ---
     slide_group = parser.add_argument_group("Slide Detection (Advanced)")
@@ -92,7 +93,8 @@ def main():
         args.fuzzy_score_threshold,
         args.llm_retries,
         args.llm_retry_delay,
-        is_creator_subtitle=is_creator_subtitle
+        is_creator_subtitle=is_creator_subtitle,
+        img_width=args.img_width
     )
 
     utils.log("Complete!", always=True)

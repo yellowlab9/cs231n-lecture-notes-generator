@@ -81,7 +81,7 @@ def get_sentence_timestamp(cleaned_sentence, original_chunk, score_cutoff=50):
     estimated_time = segment_start + (segment_duration * progress)
     return estimated_time
 
-def generate_study_guide(output_path, transcript_chunks, slides_data, model_name, fuzzy_score_threshold=50, llm_retries=3, llm_retry_delay=5, is_creator_subtitle=False):
+def generate_study_guide(output_path, transcript_chunks, slides_data, model_name, fuzzy_score_threshold=50, llm_retries=3, llm_retry_delay=5, is_creator_subtitle=False, img_width="60%"):
     """
     Generates and saves the final Markdown study guide.
     Guarantees slides are placed strictly BETWEEN complete sentences,
@@ -89,6 +89,10 @@ def generate_study_guide(output_path, transcript_chunks, slides_data, model_name
     """
     log("\nGenerating notes...", always=True)
     ensure_nltk_punkt()
+
+    # Format percentage width string cleanly (e.g. 60 or "60" or "60%" -> "60%")
+    width_clean = str(img_width).strip().rstrip('%')
+    width_str = f"{width_clean}%" if width_clean.isdigit() else str(img_width).strip()
 
     total_chunks = len(transcript_chunks)
     sentences = []
@@ -188,7 +192,8 @@ def generate_study_guide(output_path, transcript_chunks, slides_data, model_name
             flush_paragraph()
             for sl in slides_to_insert:
                 img_path = sl['img'].replace('\\', '/')
-                notes.append(f"![Slide {sl['idx']}]({img_path})\n\n")
+                slide_num = sl['idx']
+                notes.append(f'<p align="center"><img src="{img_path}" alt="Slide {slide_num}" width="{width_str}" /></p>\n\n')
 
         current_p_sentences.append(sent_text)
 
@@ -204,7 +209,8 @@ def generate_study_guide(output_path, transcript_chunks, slides_data, model_name
     while slide_idx < num_slides:
         sl = sorted_slides[slide_idx]
         img_path = sl['img'].replace('\\', '/')
-        notes.append(f"![Slide {sl['idx']}]({img_path})\n\n")
+        slide_num = sl['idx']
+        notes.append(f'<p align="center"><img src="{img_path}" alt="Slide {slide_num}" width="{width_str}" /></p>\n\n')
         slide_idx += 1
 
     # 3. Write final markdown study guide
