@@ -81,7 +81,7 @@ def get_sentence_timestamp(cleaned_sentence, original_chunk, score_cutoff=50):
     estimated_time = segment_start + (segment_duration * progress)
     return estimated_time
 
-def generate_study_guide(output_path, transcript_chunks, slides_data, model_name, fuzzy_score_threshold=50, llm_retries=3, llm_retry_delay=5, is_creator_subtitle=False, img_width="60%"):
+def generate_study_guide(output_path, transcript_chunks, slides_data, model_name, fuzzy_score_threshold=50, llm_retries=3, llm_retry_delay=5, is_creator_subtitle=False, img_width="75%"):
     """
     Generates and saves the final Markdown study guide.
     Guarantees slides are placed strictly BETWEEN complete sentences,
@@ -99,14 +99,14 @@ def generate_study_guide(output_path, transcript_chunks, slides_data, model_name
 
     # 1. Extract all complete sentences with start and end timestamps
     if is_creator_subtitle:
-        log(f"Formatting verbatim .en-US.vtt presentation ({total_chunks} chunks)...", always=True)
+        log(f"Formatting creator subtitles ({total_chunks} chunks, LaTeX math & prose polishing)...", always=True)
         for i, chunk in enumerate(transcript_chunks):
-            log(f"  -> Formatting chunk {i + 1}/{total_chunks} (preserving verbatim text)...", always=True)
+            log(f"  -> Formatting chunk {i + 1}/{total_chunks} (faithful transcript & LaTeX math)...", always=True)
             chunk_start = chunk['start']
             chunk_end = chunk['end']
             chunk_dur = max(1.0, chunk_end - chunk_start)
 
-            # Enhance presentation (LaTeX math & typography) while preserving exact text
+            # Enhance presentation (LaTeX math & typography) while preserving faithful explanations
             formatted_text = process_clean_transcript_chunk(
                 chunk['text'],
                 model_name,

@@ -11,7 +11,7 @@ DISPLAY_FLAG ?= --display
 DEBUG_FLAG   ?= --debug
 
 OUTPUT_PREFIX ?= lecture_$(LECTURE)
-IMG_WIDTH ?= 60%
+IMG_WIDTH ?= 75%
 
 # Phony targets
 .PHONY: notes clean debug-args vscode-launch
