@@ -21,6 +21,8 @@ PDF_FILE ?= $(LECTURE_DIR)/$(OUTPUT_PREFIX)_study_guide.pdf
 # Phony targets
 .PHONY: notes pdf clean clean_slides clean_cache debug-args vscode-launch
 
+PYTHON ?= python
+
 # Default target
 notes:
 	@echo "=========================================================="
@@ -29,7 +31,7 @@ notes:
 	@echo "Model: $(MODEL)"
 	@echo "Output: $(MD_FILE)"
 	@echo "=========================================================="
-	python generate_notes.py --video_list_url "$(PLAYLIST_URL)" --index $(INDEX) --output_prefix $(OUTPUT_PREFIX) --model $(MODEL) --img_width $(IMG_WIDTH) $(VERBOSE_FLAG) $(DISPLAY_FLAG) $(DEBUG_FLAG)
+	$(PYTHON) generate_notes.py --video_list_url "$(PLAYLIST_URL)" --index $(INDEX) --output_prefix $(OUTPUT_PREFIX) --model $(MODEL) --img_width $(IMG_WIDTH) $(VERBOSE_FLAG) $(DISPLAY_FLAG) $(DEBUG_FLAG)
 
 # Convert Markdown study guide to PDF via Pandoc
 pdf:

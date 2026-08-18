@@ -104,6 +104,9 @@ def download_subtitles(playlist_url, index=1, media_dir=os.path.join("lectures_c
         'subtitleslangs': [sub_lang],
         'subtitlesformat': 'vtt/srt/best',
         'quiet': True,
+        'nocheckcertificate': True,
+        'remote_components': ['ejs:github'],
+        'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
         'overwrites': False,
         'ignoreerrors': True,
         'windowsfilenames': True,
@@ -137,13 +140,16 @@ def download_video(playlist_url, index=1, media_dir=os.path.join("lectures_cache
     log(f"Downloading video (item #{index:02d}) into '{media_dir}'...", always=True)
 
     ydl_opts_vid = {
-        'format': 'bestvideo[ext=mp4][height<=1080]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        'format': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best',
         'merge_output_format': 'mp4',
         'outtmpl': f'{base}.%(ext)s',
         'playlist_items': str(index),
-        'quiet': True,
+        'quiet': False,
+        'nocheckcertificate': True,
+        'remote_components': ['ejs:github'],
+        'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
         'overwrites': False,
-        'ignoreerrors': True,
+        'ignoreerrors': False,
         'nopart': True,
         'windowsfilenames': True,
     }
