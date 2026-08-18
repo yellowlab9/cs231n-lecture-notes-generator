@@ -146,7 +146,7 @@ def load_slides_from_cache(SLIDE_CSV_FILE, SLIDE_DIR):
             hms_ms = sum(x * int(t) for x, t in zip([3600000, 60000, 1000], time_hms))
             ms = int(ts_parts[1]) if len(ts_parts) > 1 else 0
             time_ms = hms_ms + ms
-            slides_data.append({'img': img_path, 'time': time_ms / 1000.0, 'idx': int(frame_idx_str)})
+            slides_data.append({'img': img_path, 'time': time_ms / 1000.0, 'idx': int(frame_idx_str), 'timestamp': time_stamp})
     return slides_data
 
 def detect_slides(video_path, SLIDE_DIR, SLIDE_CSV_FILE, args):
@@ -318,7 +318,7 @@ def detect_slides(video_path, SLIDE_DIR, SLIDE_CSV_FILE, args):
                     img_path = Path(SLIDE_DIR, slide_name).as_posix()
                     with open(SLIDE_CSV_FILE, 'a', encoding='utf-8') as f:
                         f.write(f"{img_path},{frame_idx},{time_stamp}\n")
-                    slides_data.append({'img': img_path, 'time': time_ms / 1000, 'idx': frame_idx})
+                    slides_data.append({'img': img_path, 'time': time_ms / 1000, 'idx': frame_idx, 'timestamp': time_stamp})
 
                     same_slide_frames = [current_anchor_frame.copy()]
                     same_slide_frame_first_img_path = img_path                    

@@ -160,7 +160,24 @@ def generate_study_guide(output_path, transcript_chunks, slides_data, model_name
     slide_idx = 0
     num_slides = len(sorted_slides)
 
-    notes = []
+    notes = [
+        "---\n",
+        "papersize: letter\n",
+        'geometry: "margin=0.75in"\n',
+        "---\n\n",
+        "<style>\n",
+        "  @page {\n",
+        "    size: letter;\n",
+        "    margin: 0.75in;\n",
+        "  }\n",
+        "  img {\n",
+        "    display: block;\n",
+        "    margin-left: auto;\n",
+        "    margin-right: auto;\n",
+        f"    width: {width_str};\n",
+        "  }\n",
+        "</style>\n\n",
+    ]
     current_p_sentences = []
 
     def flush_paragraph():
@@ -192,8 +209,8 @@ def generate_study_guide(output_path, transcript_chunks, slides_data, model_name
             flush_paragraph()
             for sl in slides_to_insert:
                 img_path = sl['img'].replace('\\', '/')
-                slide_num = sl['idx']
-                notes.append(f'<p align="center"><img src="{img_path}" alt="Slide {slide_num}" width="{width_str}" /></p>\n\n')
+                slide_ts = sl.get('timestamp') or f"{int(sl['time']//3600):02d}:{int((sl['time']%3600)//60):02d}:{int(sl['time']%60):02d}"
+                notes.append(f'<p align="center"><img src="{img_path}" alt="Lecture Video at {slide_ts}" width="{width_str}" /></p>\n\n')
 
         current_p_sentences.append(sent_text)
 
@@ -209,8 +226,8 @@ def generate_study_guide(output_path, transcript_chunks, slides_data, model_name
     while slide_idx < num_slides:
         sl = sorted_slides[slide_idx]
         img_path = sl['img'].replace('\\', '/')
-        slide_num = sl['idx']
-        notes.append(f'<p align="center"><img src="{img_path}" alt="Slide {slide_num}" width="{width_str}" /></p>\n\n')
+        slide_ts = sl.get('timestamp') or f"{int(sl['time']//3600):02d}:{int((sl['time']%3600)//60):02d}:{int(sl['time']%60):02d}"
+        notes.append(f'<p align="center"><img src="{img_path}" alt="Lecture Video at {slide_ts}" width="{width_str}" /></p>\n\n')
         slide_idx += 1
 
     # 3. Write final markdown study guide

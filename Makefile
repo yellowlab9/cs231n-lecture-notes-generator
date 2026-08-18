@@ -12,9 +12,12 @@ DEBUG_FLAG   ?= --debug
 
 OUTPUT_PREFIX ?= lecture_$(LECTURE)
 IMG_WIDTH ?= 75%
+PDF_ENGINE ?= xelatex
+MD_FILE ?= $(OUTPUT_PREFIX)_study_guide.md
+PDF_FILE ?= $(OUTPUT_PREFIX)_study_guide.pdf
 
 # Phony targets
-.PHONY: notes clean debug-args vscode-launch
+.PHONY: notes pdf clean clean_slides debug-args vscode-launch
 
 # Default target
 notes:
@@ -25,6 +28,14 @@ notes:
 	@echo "Image Width: $(IMG_WIDTH)"
 	@echo "=========================================================="
 	python generate_notes.py --video_list_url "$(PLAYLIST_URL)" --index $(INDEX) --output_prefix $(OUTPUT_PREFIX) --model $(MODEL) --img_width $(IMG_WIDTH) $(VERBOSE_FLAG) $(DISPLAY_FLAG) $(DEBUG_FLAG)
+
+# Convert Markdown study guide to PDF via Pandoc
+pdf:
+	@echo "=========================================================="
+	@echo "Converting $(MD_FILE) -> $(PDF_FILE) via Pandoc ($(PDF_ENGINE))"
+	@echo "=========================================================="
+	pandoc "$(MD_FILE)" -o "$(PDF_FILE)" --pdf-engine=$(PDF_ENGINE) --lua-filter=study_guide_generator/html_filter.lua
+	@echo "Done! Generated $(PDF_FILE)"
 
 # Clean up local environment
 clean:
