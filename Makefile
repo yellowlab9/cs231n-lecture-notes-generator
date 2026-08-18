@@ -2,7 +2,6 @@
 LECTURE ?= 3
 INDEX ?= $(LECTURE)
 PLAYLIST_URL ?= https://www.youtube.com/playlist?list=PLoROMvodv4rOmsNzYBMe0gJY2XS8AQg16
-# Changed to latest as requested
 MODEL ?= gemma4:latest
 
 # Toggles for logging and visual monitor
@@ -10,14 +9,17 @@ VERBOSE_FLAG ?= --verbose
 DISPLAY_FLAG ?= --display
 DEBUG_FLAG   ?= --debug
 
-OUTPUT_PREFIX ?= lecture_$(LECTURE)
+LECTURE_NUM := $(shell printf "%02d" $(LECTURE) 2>/dev/null || echo $(LECTURE))
+OUTPUT_PREFIX ?= lecture_$(LECTURE_NUM)
 IMG_WIDTH ?= 75%
 PDF_ENGINE ?= xelatex
-MD_FILE ?= $(OUTPUT_PREFIX)_study_guide.md
-PDF_FILE ?= $(OUTPUT_PREFIX)_study_guide.pdf
+
+LECTURE_DIR ?= lectures/$(OUTPUT_PREFIX)
+MD_FILE ?= $(LECTURE_DIR)/$(OUTPUT_PREFIX)_study_guide.md
+PDF_FILE ?= $(LECTURE_DIR)/$(OUTPUT_PREFIX)_study_guide.pdf
 
 # Phony targets
-.PHONY: notes pdf clean clean_slides debug-args vscode-launch
+.PHONY: notes pdf clean clean_slides clean_cache debug-args vscode-launch
 
 # Default target
 notes:
@@ -25,7 +27,7 @@ notes:
 	@echo "Generating Notes for Lecture $(LECTURE) (Index $(INDEX))"
 	@echo "Playlist URL: $(PLAYLIST_URL)"
 	@echo "Model: $(MODEL)"
-	@echo "Image Width: $(IMG_WIDTH)"
+	@echo "Output: $(MD_FILE)"
 	@echo "=========================================================="
 	python generate_notes.py --video_list_url "$(PLAYLIST_URL)" --index $(INDEX) --output_prefix $(OUTPUT_PREFIX) --model $(MODEL) --img_width $(IMG_WIDTH) $(VERBOSE_FLAG) $(DISPLAY_FLAG) $(DEBUG_FLAG)
 
@@ -34,15 +36,19 @@ pdf:
 	@echo "=========================================================="
 	@echo "Converting $(MD_FILE) -> $(PDF_FILE) via Pandoc ($(PDF_ENGINE))"
 	@echo "=========================================================="
-	pandoc "$(MD_FILE)" -o "$(PDF_FILE)" --pdf-engine=$(PDF_ENGINE) --lua-filter=study_guide_generator/html_filter.lua
+	pandoc "$(MD_FILE)" -o "$(PDF_FILE)" --pdf-engine=$(PDF_ENGINE) --resource-path="$(LECTURE_DIR)" --lua-filter=study_guide_generator/html_filter.lua
 	@echo "Done! Generated $(PDF_FILE)"
 
 # Clean up local environment
 clean:
-	@echo "Cleaning up media, slides, and markdown files..."
-	rm -rf slides/
-	rm -f lecture*.mp4 lecture*.m4a lecture*.vtt lecture*.srt lecture*.part
-	rm -f lecture*.pdf lecture_slides.pdf semantic_study_notes.md
+	@echo "Cleaning up lectures and cache..."
+	rm -rf lectures_cache/
+	rm -rf lectures/
+	rm -f *.mp4 *.m4a *.vtt *.srt *.part *.pdf *.md *.csv *.txt
+
+clean_cache:
+	@echo "Cleaning up temporary media and slide caches..."
+	rm -rf lectures_cache/
 	
 clean_slides:
 	@echo "Cleaning up slides..."

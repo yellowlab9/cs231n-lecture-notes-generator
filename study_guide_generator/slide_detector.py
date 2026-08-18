@@ -93,6 +93,52 @@ def save_slide_mode(frames_list, output_path):
         log(f"      Failed to calculate mode for {output_path}: {e}", always=True)
     return mode_img
 
+import shutil
+
+def _migrate_legacy_slides(base_name, SLIDE_DIR, SLIDE_CSV_FILE):
+    """
+    Migrates legacy slides/ and CSV files from root into lectures/<base_name>/slides/ and lectures_cache/slide_csv/.
+    """
+    os.makedirs(SLIDE_DIR, exist_ok=True)
+    os.makedirs(os.path.dirname(SLIDE_CSV_FILE), exist_ok=True)
+
+    # Possible legacy CSV files in root: e.g. lecture_3_slide.csv, lecture_03_slide.csv
+    legacy_csv_names = [f"{base_name}_slide.csv"]
+    if base_name.startswith("lecture_"):
+        num_part = base_name.replace("lecture_", "").lstrip("0")
+        if num_part:
+            legacy_csv_names.append(f"lecture_{num_part}_slide.csv")
+
+    for leg_csv in legacy_csv_names:
+        if os.path.exists(leg_csv) and (not os.path.exists(SLIDE_CSV_FILE) or os.path.getsize(SLIDE_CSV_FILE) == 0):
+            log(f"[*] Migrating legacy CSV '{leg_csv}' to '{SLIDE_CSV_FILE}'...", always=True)
+            with open(leg_csv, 'r', encoding='utf-8') as fin, open(SLIDE_CSV_FILE, 'w', encoding='utf-8') as fout:
+                header = fin.readline()
+                fout.write(header if header.startswith("img_path") else "img_path,frame_idx,time_stamp\n")
+                for line in fin:
+                    parts = line.strip().split(',')
+                    if len(parts) == 3:
+                        old_path, f_idx, ts = parts
+                        old_fname = os.path.basename(old_path)
+                        # Ensure prefix is applied
+                        if not old_fname.startswith(f"{base_name}_"):
+                            new_fname = f"{base_name}_{old_fname}"
+                        else:
+                            new_fname = old_fname
+                        fout.write(f"slides/{new_fname},{f_idx},{ts}\n")
+
+    # Migrate legacy slides from root 'slides/' directory
+    legacy_slides_dir = "slides"
+    if os.path.exists(legacy_slides_dir) and os.path.isdir(legacy_slides_dir) and legacy_slides_dir != SLIDE_DIR:
+        legacy_files = [f for f in os.listdir(legacy_slides_dir) if f.endswith('.jpg')]
+        if legacy_files and len(os.listdir(SLIDE_DIR)) == 0:
+            log(f"[*] Migrating {len(legacy_files)} slide images from '{legacy_slides_dir}/' to '{SLIDE_DIR}/' with '{base_name}_' prefix...", always=True)
+            for f in legacy_files:
+                src_path = os.path.join(legacy_slides_dir, f)
+                new_fname = f if f.startswith(f"{base_name}_") else f"{base_name}_{f}"
+                dst_path = os.path.join(SLIDE_DIR, new_fname)
+                shutil.copy2(src_path, dst_path)
+
 def load_slides_from_cache(SLIDE_CSV_FILE, SLIDE_DIR):
     """
     Attempts to load slide data from a CSV cache file if it's valid.
@@ -103,7 +149,6 @@ def load_slides_from_cache(SLIDE_CSV_FILE, SLIDE_DIR):
 
     log(f"Found existing slide data file: {SLIDE_CSV_FILE}. Verifying contents...", always=True)
     slides_from_csv = []
-    all_files_exist = True
 
     with open(SLIDE_CSV_FILE, 'r', encoding='utf-8') as f:
         next(f, None)  # Skip header
@@ -114,24 +159,28 @@ def load_slides_from_cache(SLIDE_CSV_FILE, SLIDE_DIR):
                 return None  # Cache is invalid
 
             img_path, _, _ = parts
-            slides_from_csv.append(img_path)
-            if not os.path.exists(img_path):
-                log(f"  -> Mismatch: File '{img_path}' from CSV not found on disk.", always=True)
-                return None # Cache is invalid
+            fname = os.path.basename(img_path)
+            slides_from_csv.append(fname)
+            full_img_path = os.path.join(SLIDE_DIR, fname)
+            if not os.path.exists(full_img_path):
+                log(f"  -> Mismatch: File '{full_img_path}' from CSV not found on disk.", always=True)
+                return None  # Cache is invalid
 
-    # New check: Verify there are no duplicate slide paths in the CSV
+    # Verify no duplicate slide paths in the CSV
     if len(slides_from_csv) != len(set(slides_from_csv)):
         log("  -> Mismatch: Duplicate entries found in CSV file. Re-running detection.", always=True)
-        return None # Cache is invalid
+        return None  # Cache is invalid
 
-    # An empty CSV (or header only) is not a valid slide cache
     if not slides_from_csv:
         return None
 
-    files_in_dir = {Path(SLIDE_DIR, f).as_posix() for f in os.listdir(SLIDE_DIR) if f.endswith('.jpg')}
+    if not os.path.exists(SLIDE_DIR):
+        return None
+
+    files_in_dir = {f for f in os.listdir(SLIDE_DIR) if f.endswith('.jpg')}
     if files_in_dir != set(slides_from_csv):
         log("  -> Mismatch: Files in directory do not match CSV. Re-running detection.", always=True)
-        return None # Cache is invalid
+        return None  # Cache is invalid
 
     log("  -> Verification successful. Loading slides from cache.", always=True)
     slides_data = []
@@ -149,7 +198,7 @@ def load_slides_from_cache(SLIDE_CSV_FILE, SLIDE_DIR):
             slides_data.append({'img': img_path, 'time': time_ms / 1000.0, 'idx': int(frame_idx_str), 'timestamp': time_stamp})
     return slides_data
 
-def detect_slides(video_path, SLIDE_DIR, SLIDE_CSV_FILE, args):
+def detect_slides(video_path, SLIDE_DIR, SLIDE_CSV_FILE, args, slide_prefix=""):
     """
     Detects and extracts slides from a video file.
 
@@ -158,10 +207,20 @@ def detect_slides(video_path, SLIDE_DIR, SLIDE_CSV_FILE, args):
         SLIDE_DIR (str): Directory to save slide images.
         SLIDE_CSV_FILE (str): Path to the CSV file for logging slide info.
         args (argparse.Namespace): Command-line arguments.
+        slide_prefix (str): Prefix for slide filenames (e.g. 'lecture_03').
 
     Returns:
         list: A list of dictionaries, where each dictionary contains information about a detected slide.
     """
+    base_name = slide_prefix or os.path.splitext(os.path.basename(video_path))[0]
+    os.makedirs(SLIDE_DIR, exist_ok=True)
+    csv_dir = os.path.dirname(SLIDE_CSV_FILE)
+    if csv_dir:
+        os.makedirs(csv_dir, exist_ok=True)
+
+    # Migrate any legacy files from root into lectures/<base_name>/slides and lectures_cache/slide_csv
+    _migrate_legacy_slides(base_name, SLIDE_DIR, SLIDE_CSV_FILE)
+
     # --- CACHE CHECK ---
     cached_slides = load_slides_from_cache(SLIDE_CSV_FILE, SLIDE_DIR)
     if cached_slides is not None:
@@ -313,15 +372,16 @@ def detect_slides(video_path, SLIDE_DIR, SLIDE_CSV_FILE, args):
                                 cv2.imshow("Slide", disp)
                                 cv2.waitKey(5) # Short wait`
                     clean_ts = time_stamp.replace(':', '-')
-                    slide_name = f"slide_{frame_idx}_{clean_ts}.jpg"
+                    slide_name = f"{base_name}_slide_{frame_idx}_{clean_ts}.jpg" if base_name else f"slide_{frame_idx}_{clean_ts}.jpg"
+                    img_file_path = os.path.join(SLIDE_DIR, slide_name)
+                    rel_img_path = f"slides/{slide_name}"
 
-                    img_path = Path(SLIDE_DIR, slide_name).as_posix()
                     with open(SLIDE_CSV_FILE, 'a', encoding='utf-8') as f:
-                        f.write(f"{img_path},{frame_idx},{time_stamp}\n")
-                    slides_data.append({'img': img_path, 'time': time_ms / 1000, 'idx': frame_idx, 'timestamp': time_stamp})
+                        f.write(f"{rel_img_path},{frame_idx},{time_stamp}\n")
+                    slides_data.append({'img': rel_img_path, 'time': time_ms / 1000, 'idx': frame_idx, 'timestamp': time_stamp})
 
                     same_slide_frames = [current_anchor_frame.copy()]
-                    same_slide_frame_first_img_path = img_path                    
+                    same_slide_frame_first_img_path = img_file_path                    
                     same_slide_frame_first_time  = time_stamp
                     same_slide_frame_first_idx = frame_idx
 

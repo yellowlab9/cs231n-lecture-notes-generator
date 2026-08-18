@@ -1,0 +1,23 @@
+# Python virtual environment
+# These folders contain project-specific dependencies and can be recreated.
+.venv/
+venv/
+env/
+*.env
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Intermediate cache, downloaded files, and final outputs
+# These are generated/downloaded by the scripts and can be large or numerous.
+lectures_cache/
+temp_cache/
+*.pdf
+
+# IDE and OS specific files
+.vscode/
+.idea/
+.DS_Store

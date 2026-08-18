@@ -62,10 +62,31 @@ def main():
     if args.output_prefix:
         clean_prefix = os.path.basename(args.output_prefix.split('?')[0])
         base_name = os.path.splitext(clean_prefix)[0]
+        # Normalize lecture_3 -> lecture_03 for consistent 2-digit sorting
+        if base_name.startswith("lecture_"):
+            num_part = base_name.replace("lecture_", "")
+            if num_part.isdigit():
+                base_name = f"lecture_{int(num_part):02d}"
     else:
         base_name = f"lecture_{args.index:02d}"
 
-    utils.LOG_FILE = f"{base_name}_log.txt"
+    # Directory Structure
+    LECTURES_DIR = "lectures"
+    LECTURE_DIR = os.path.join(LECTURES_DIR, base_name)
+    SLIDE_DIR = os.path.join(LECTURE_DIR, "slides")
+    os.makedirs(SLIDE_DIR, exist_ok=True)
+
+    CACHE_DIR = "lectures_cache"
+    MEDIA_DIR = os.path.join(CACHE_DIR, "media")
+    SLIDE_CSV_DIR = os.path.join(CACHE_DIR, "slide_csv")
+    LOGS_DIR = os.path.join(CACHE_DIR, "logs")
+
+    os.makedirs(MEDIA_DIR, exist_ok=True)
+    os.makedirs(SLIDE_CSV_DIR, exist_ok=True)
+    os.makedirs(LOGS_DIR, exist_ok=True)
+
+    SLIDE_CSV_FILE = os.path.join(SLIDE_CSV_DIR, f"{base_name}_slide.csv")
+    utils.LOG_FILE = os.path.join(LOGS_DIR, f"{base_name}_log.txt")
     open(utils.LOG_FILE, 'w', encoding='utf-8').close()
 
     # --- PRE-FLIGHT CHECKS ---
@@ -73,18 +94,11 @@ def main():
     if not check_ollama_server():
         sys.exit(1)
 
-    SLIDE_DIR = "slides"
-    SLIDE_CSV_FILE = f"{base_name}_slide.csv"
-    if not os.path.exists(SLIDE_CSV_FILE):
-        with open(SLIDE_CSV_FILE, 'w', encoding='utf-8') as f:
-            f.write("img_path,frame_idx,time_stamp\n")
-
-    if not os.path.exists(SLIDE_DIR): os.makedirs(SLIDE_DIR)
-    video_path, transcript_path, is_creator_subtitle = download_media(args.video_list_url, index=args.index)
-    slides_data = detect_slides(video_path, SLIDE_DIR, SLIDE_CSV_FILE, args)
+    video_path, transcript_path, is_creator_subtitle = download_media(args.video_list_url, index=args.index, media_dir=MEDIA_DIR)
+    slides_data = detect_slides(video_path, SLIDE_DIR, SLIDE_CSV_FILE, args, slide_prefix=base_name)
     overlap = 0 if is_creator_subtitle else args.overlap_duration
     transcript_chunks = parse_transcript(transcript_path, chunk_duration=args.chunk_duration, overlap_duration=overlap)
-    output_md_path = f"{base_name}_study_guide.md"
+    output_md_path = os.path.join(LECTURE_DIR, f"{base_name}_study_guide.md")
     generate_study_guide(
         output_md_path,
         transcript_chunks,
