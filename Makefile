@@ -16,10 +16,11 @@ PDF_ENGINE ?= xelatex
 
 LECTURE_DIR ?= lectures/$(OUTPUT_PREFIX)
 MD_FILE ?= $(LECTURE_DIR)/$(OUTPUT_PREFIX)_study_guide.md
-PDF_FILE ?= $(LECTURE_DIR)/$(OUTPUT_PREFIX)_study_guide.pdf
+PDF_DIR ?= lectures_pdf
+PDF_FILE ?= $(PDF_DIR)/$(OUTPUT_PREFIX)_study_guide.pdf
 
 # Phony targets
-.PHONY: notes pdf clean clean_slides clean_cache debug-args vscode-launch
+.PHONY: notes pdf clean clean_slides clean_cache clean_pdf debug-args vscode-launch
 
 PYTHON ?= python
 
@@ -38,19 +39,25 @@ pdf:
 	@echo "=========================================================="
 	@echo "Converting $(MD_FILE) -> $(PDF_FILE) via Pandoc ($(PDF_ENGINE))"
 	@echo "=========================================================="
+	@mkdir -p "$(PDF_DIR)"
 	pandoc "$(MD_FILE)" -o "$(PDF_FILE)" --pdf-engine=$(PDF_ENGINE) --resource-path="$(LECTURE_DIR)" --lua-filter=study_guide_generator/html_filter.lua
 	@echo "Done! Generated $(PDF_FILE)"
 
 # Clean up local environment
 clean:
-	@echo "Cleaning up lectures and cache..."
+	@echo "Cleaning up lectures, pdfs, and cache..."
 	rm -rf lectures_cache/
 	rm -rf lectures/
+	rm -rf $(PDF_DIR)/
 	rm -f *.mp4 *.m4a *.vtt *.srt *.part *.pdf *.md *.csv *.txt
 
 clean_cache:
 	@echo "Cleaning up temporary media and slide caches..."
 	rm -rf lectures_cache/
+
+clean_pdf:
+	@echo "Cleaning up compiled PDFs in $(PDF_DIR)..."
+	rm -rf $(PDF_DIR)/
 	
 clean_slides:
 	@echo "Cleaning up slides..."
