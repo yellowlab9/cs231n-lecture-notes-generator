@@ -121,9 +121,14 @@ def download_subtitles(playlist_url, index=1, media_dir=os.path.join("lectures_c
 
     return sub_file, is_creator_subtitle
 
+def _is_valid_video(video_path):
+    """Verifies that a video exists and is at least 10MB (not a partial stub)."""
+    return os.path.exists(video_path) and os.path.getsize(video_path) >= 10 * 1024 * 1024
+
 def download_video(playlist_url, index=1, media_dir=os.path.join("lectures_cache", "media")):
     """
     Downloads only the video and audio stream for a specific playlist item.
+    Uses browser cookies and JS solver to bypass YouTube bot detection.
     Returns video_path.
     """
     index = max(1, int(index))
@@ -133,29 +138,47 @@ def download_video(playlist_url, index=1, media_dir=os.path.join("lectures_cache
     base = os.path.join(media_dir, base_name)
     video_path = f"{base}.mp4"
 
-    if os.path.exists(video_path):
-        log(f"[*] Video '{video_path}' found locally. Skipping download.", always=True)
+    if _is_valid_video(video_path):
+        log(f"[*] Video '{video_path}' found locally ({os.path.getsize(video_path) // (1024*1024)} MB). Skipping download.", always=True)
         return video_path
+    elif os.path.exists(video_path):
+        try:
+            os.remove(video_path)
+        except Exception:
+            pass
 
     log(f"Downloading video (item #{index:02d}) into '{media_dir}'...", always=True)
 
-    ydl_opts_vid = {
-        'format': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best',
-        'merge_output_format': 'mp4',
-        'outtmpl': f'{base}.%(ext)s',
-        'playlist_items': str(index),
-        'quiet': False,
-        'nocheckcertificate': True,
-        'remote_components': ['ejs:github'],
-        'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
-        'overwrites': False,
-        'ignoreerrors': False,
-        'nopart': True,
-        'windowsfilenames': True,
-    }
+    # Multi-strategy download: try browser cookies (Firefox, Chrome, Edge, Brave, and direct)
+    success = False
+    for browser in ['firefox', 'chrome', 'edge', 'brave', None]:
+        ydl_opts_vid = {
+            'format': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best',
+            'merge_output_format': 'mp4',
+            'outtmpl': f'{base}.%(ext)s',
+            'playlist_items': str(index),
+            'quiet': False,
+            'nocheckcertificate': True,
+            'remote_components': ['ejs:github'],
+            'overwrites': True,
+            'ignoreerrors': False,
+            'nopart': True,
+            'windowsfilenames': True,
+        }
+        if browser:
+            ydl_opts_vid['cookiesfrombrowser'] = (browser,)
 
-    with yt_dlp.YoutubeDL(ydl_opts_vid) as ydl:
-        ydl.extract_info(str(playlist_url).strip(), download=True)
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts_vid) as ydl:
+                ydl.extract_info(str(playlist_url).strip(), download=True)
+            if _is_valid_video(video_path):
+                success = True
+                break
+        except Exception as e:
+            log(f"  -> Download attempt with browser '{browser}' failed: {e}. Trying next option...", always=True)
+
+    if not _is_valid_video(video_path):
+        raise RuntimeError(f"Failed to download a valid video file for {base_name}. Target: '{video_path}'")
 
     return video_path
 
@@ -173,8 +196,8 @@ def download_media(playlist_url, index=1, media_dir=os.path.join("lectures_cache
     video_path = f"{base}.mp4"
     sub_file = _find_subtitle_file(base)
 
-    # Fast check: if both video and transcript are already downloaded, skip completely
-    if os.path.exists(video_path) and sub_file:
+    # Fast check: if both valid video and transcript are already downloaded, skip completely
+    if _is_valid_video(video_path) and sub_file:
         is_creator = sub_file.endswith('.en-US.vtt') or sub_file.endswith('.en-US.srt')
         log(f"[*] Media for {base_name} already found locally ('{video_path}', '{sub_file}'). Skipping all downloads.", always=True)
         return video_path, sub_file, is_creator
