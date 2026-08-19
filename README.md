@@ -83,11 +83,14 @@ make notes LECTURE=2 MODEL=gemma4:latest
 ### 2. Compile to PDF
 Compile the Markdown notes into a 14pt PDF:
 ```bash
-# Default 14pt
+# Compile a specific lecture (default 14pt)
 make pdf LECTURE=1
 
-# Custom font size on the fly:
-make pdf LECTURE=1 FONT_SIZE=12pt
+# Compile all new or modified lecture notes (skips up-to-date PDFs):
+make pdf-all
+
+# Force re-compile all notes with custom font size:
+make pdf-all FORCE=1 FONT_SIZE=12pt
 ```
 
 ### 3. Pair with Jupyter Notebook (.ipynb)

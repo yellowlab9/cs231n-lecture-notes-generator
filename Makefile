@@ -15,7 +15,7 @@ PDF_ENGINE ?= xelatex
 PREFIX_FLAG ?= $(if $(OUTPUT_PREFIX),--output_prefix $(OUTPUT_PREFIX),)
 
 # Phony targets
-.PHONY: notes pdf ipynb sync clean clean_slides clean_cache clean_pdf debug-args vscode-launch
+.PHONY: notes pdf pdf-all ipynb sync clean clean_slides clean_cache clean_pdf debug-args vscode-launch
 
 PYTHON ?= python
 
@@ -30,12 +30,19 @@ notes:
 	@echo "=========================================================="
 	"$(PYTHON)" generate_notes.py --video_list_url "$(PLAYLIST_URL)" --index $(INDEX) $(PREFIX_FLAG) --model $(MODEL) --img_width $(IMG_WIDTH) --fontsize $(FONT_SIZE) $(VERBOSE_FLAG) $(DISPLAY_FLAG) $(DEBUG_FLAG)
 
-# Convert Markdown study guide to PDF via Pandoc
+# Convert a single Markdown study guide to PDF via Pandoc
 pdf:
 	@echo "=========================================================="
 	@echo "Converting Study Guide to PDF for Lecture $(LECTURE) via Pandoc ($(PDF_ENGINE), $(FONT_SIZE))"
 	@echo "=========================================================="
 	@"$(PYTHON)" -m study_notes_generator.compile_pdf --lecture $(LECTURE) --engine $(PDF_ENGINE) --fontsize $(FONT_SIZE)
+
+# Convert all new or modified Markdown study guides to PDF
+pdf-all:
+	@echo "=========================================================="
+	@echo "Checking and Compiling All New / Modified Notes to PDF ($(PDF_ENGINE), $(FONT_SIZE))"
+	@echo "=========================================================="
+	@"$(PYTHON)" -m study_notes_generator.compile_pdf --all --engine $(PDF_ENGINE) --fontsize $(FONT_SIZE) $(if $(FORCE),--force,)
 
 # Convert/Pair Markdown study guide to Jupyter Notebook (.ipynb) via Jupytext
 ipynb:
