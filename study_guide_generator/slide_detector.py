@@ -141,62 +141,88 @@ def _migrate_legacy_slides(base_name, SLIDE_DIR, SLIDE_CSV_FILE):
 
 def load_slides_from_cache(SLIDE_CSV_FILE, SLIDE_DIR):
     """
-    Attempts to load slide data from a CSV cache file if it's valid.
+    Attempts to load slide data from a CSV cache file or disk if valid.
     Returns a list of slide data dictionaries if successful, otherwise None.
     """
-    if not os.path.exists(SLIDE_CSV_FILE) or os.path.getsize(SLIDE_CSV_FILE) == 0:
-        return None
-
-    log(f"Found existing slide data file: {SLIDE_CSV_FILE}. Verifying contents...", always=True)
-    slides_from_csv = []
-
-    with open(SLIDE_CSV_FILE, 'r', encoding='utf-8') as f:
-        next(f, None)  # Skip header
-        for line in f:
-            parts = line.strip().split(',')
-            if len(parts) != 3:
-                log(f"  -> Mismatch: Malformed line in CSV: {line.strip()}", always=True)
-                return None  # Cache is invalid
-
-            img_path, _, _ = parts
-            fname = os.path.basename(img_path)
-            slides_from_csv.append(fname)
-            full_img_path = os.path.join(SLIDE_DIR, fname)
-            if not os.path.exists(full_img_path):
-                log(f"  -> Mismatch: File '{full_img_path}' from CSV not found on disk.", always=True)
-                return None  # Cache is invalid
-
-    # Verify no duplicate slide paths in the CSV
-    if len(slides_from_csv) != len(set(slides_from_csv)):
-        log("  -> Mismatch: Duplicate entries found in CSV file. Re-running detection.", always=True)
-        return None  # Cache is invalid
-
-    if not slides_from_csv:
-        return None
-
     if not os.path.exists(SLIDE_DIR):
         return None
 
-    files_in_dir = {f for f in os.listdir(SLIDE_DIR) if f.endswith('.jpg')}
-    if files_in_dir != set(slides_from_csv):
-        log("  -> Mismatch: Files in directory do not match CSV. Re-running detection.", always=True)
-        return None  # Cache is invalid
+    files_in_dir = sorted([f for f in os.listdir(SLIDE_DIR) if f.endswith('.jpg')])
+    if not files_in_dir:
+        return None
 
-    log("  -> Verification successful. Loading slides from cache.", always=True)
-    slides_data = []
-    with open(SLIDE_CSV_FILE, 'r', encoding='utf-8') as f:
-        lines = f.readlines()[1:]
-    for l in lines:
-        parts = l.strip().split(',')
-        if len(parts) == 3:
-            img_path, frame_idx_str, time_stamp = parts
-            ts_parts = time_stamp.split('.')
-            time_hms = ts_parts[0].split(':')
-            hms_ms = sum(x * int(t) for x, t in zip([3600000, 60000, 1000], time_hms))
-            ms = int(ts_parts[1]) if len(ts_parts) > 1 else 0
-            time_ms = hms_ms + ms
-            slides_data.append({'img': img_path, 'time': time_ms / 1000.0, 'idx': int(frame_idx_str), 'timestamp': time_stamp})
-    return slides_data
+    # Check if CSV exists and parse entries
+    if os.path.exists(SLIDE_CSV_FILE) and os.path.getsize(SLIDE_CSV_FILE) > 0:
+        log(f"Found existing slide data file: {SLIDE_CSV_FILE}. Verifying contents...", always=True)
+        slides_dict = {}
+        with open(SLIDE_CSV_FILE, 'r', encoding='utf-8') as f:
+            for line in f:
+                parts = line.strip().split(',')
+                if len(parts) != 3:
+                    continue
+                # Skip header row if present
+                if parts[0].strip() == "img_path" or not parts[1].strip().isdigit():
+                    continue
+                img_path, frame_idx_str, time_stamp = parts
+                fname = os.path.basename(img_path)
+                full_img_path = os.path.join(SLIDE_DIR, fname)
+                if os.path.exists(full_img_path):
+                    slides_dict[fname] = (img_path, int(frame_idx_str), time_stamp)
+
+        # If CSV contains all images in SLIDE_DIR, return sorted slides
+        if set(slides_dict.keys()) == set(files_in_dir):
+            log(f"  -> Verification successful. Loading {len(slides_dict)} slides from cache.", always=True)
+            slide_dir_name = os.path.basename(SLIDE_DIR)
+            slides_data = []
+            for fname in files_in_dir:
+                img_path, frame_idx, time_stamp = slides_dict[fname]
+                ts_parts = time_stamp.split('.')
+                time_hms = ts_parts[0].split(':')
+                hms_ms = sum(x * int(t) for x, t in zip([3600000, 60000, 1000], time_hms))
+                ms = int(ts_parts[1]) if len(ts_parts) > 1 else 0
+                time_ms = hms_ms + ms
+                slides_data.append({
+                    'img': f"{slide_dir_name}/{fname}",
+                    'time': time_ms / 1000.0,
+                    'idx': frame_idx,
+                    'timestamp': time_stamp
+                })
+            # Clean and write valid deduplicated CSV
+            with open(SLIDE_CSV_FILE, 'w', encoding='utf-8') as f:
+                f.write("img_path,frame_idx,time_stamp\n")
+                for s in slides_data:
+                    f.write(f"{s['img']},{s['idx']},{s['timestamp']}\n")
+            return slides_data
+
+    # Self-recovery fallback: parse timestamps directly from slide filenames
+    import re
+    slide_dir_name = os.path.basename(SLIDE_DIR)
+    parsed_slides = []
+    for fname in files_in_dir:
+        m = re.search(r'slide_(\d+)_(\d{2})-(\d{2})-(\d{2}\.\d+)\.jpg$', fname)
+        if m:
+            frame_idx = int(m.group(1))
+            time_stamp = f"{m.group(2)}:{m.group(3)}:{m.group(4)}"
+            time_hms = [int(m.group(2)), int(m.group(3)), int(float(m.group(4)))]
+            ms = int(round((float(m.group(4)) - int(float(m.group(4)))) * 1000))
+            time_ms = sum(x * t for x, t in zip([3600000, 60000, 1000], time_hms)) + ms
+            parsed_slides.append({
+                'img': f"{slide_dir_name}/{fname}",
+                'time': time_ms / 1000.0,
+                'idx': frame_idx,
+                'timestamp': time_stamp
+            })
+
+    if len(parsed_slides) == len(files_in_dir) and len(parsed_slides) > 0:
+        parsed_slides.sort(key=lambda s: s['time'])
+        log(f"  -> Recovered {len(parsed_slides)} slides directly from {SLIDE_DIR}.", always=True)
+        with open(SLIDE_CSV_FILE, 'w', encoding='utf-8') as f:
+            f.write("img_path,frame_idx,time_stamp\n")
+            for s in parsed_slides:
+                f.write(f"{s['img']},{s['idx']},{s['timestamp']}\n")
+        return parsed_slides
+
+    return None
 
 def detect_slides(video_path, SLIDE_DIR, SLIDE_CSV_FILE, args, slide_prefix=""):
     """
@@ -225,6 +251,10 @@ def detect_slides(video_path, SLIDE_DIR, SLIDE_CSV_FILE, args, slide_prefix=""):
     cached_slides = load_slides_from_cache(SLIDE_CSV_FILE, SLIDE_DIR)
     if cached_slides is not None:
         return cached_slides
+
+    # Initialize / clean CSV file with header before extraction
+    with open(SLIDE_CSV_FILE, 'w', encoding='utf-8') as f:
+        f.write("img_path,frame_idx,time_stamp\n")
 
     # --- VIDEO INITIALIZATION ---
     try:
@@ -372,9 +402,13 @@ def detect_slides(video_path, SLIDE_DIR, SLIDE_CSV_FILE, args, slide_prefix=""):
                                 cv2.imshow("Slide", disp)
                                 cv2.waitKey(5) # Short wait`
                     clean_ts = time_stamp.replace(':', '-')
-                    slide_name = f"{base_name}_slide_{frame_idx}_{clean_ts}.jpg" if base_name else f"slide_{frame_idx}_{clean_ts}.jpg"
+                    if base_name and base_name != "slide":
+                        slide_name = f"{base_name}_slide_{frame_idx}_{clean_ts}.jpg"
+                    else:
+                        slide_name = f"slide_{frame_idx}_{clean_ts}.jpg"
                     img_file_path = os.path.join(SLIDE_DIR, slide_name)
-                    rel_img_path = f"slides/{slide_name}"
+                    slide_dir_name = os.path.basename(SLIDE_DIR)
+                    rel_img_path = f"{slide_dir_name}/{slide_name}"
 
                     with open(SLIDE_CSV_FILE, 'a', encoding='utf-8') as f:
                         f.write(f"{rel_img_path},{frame_idx},{time_stamp}\n")

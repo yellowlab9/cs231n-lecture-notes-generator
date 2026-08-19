@@ -28,25 +28,28 @@ def check_ollama_server():
 def process_clean_transcript_chunk(transcript_text, model_name, retries=3, delay=5):
     """
     Minimal-touch formatter for high-quality creator subtitles (.en-US.vtt).
-    Preserves verbatim wording while formatting LaTeX math ($W$, $b$, $x_i$, $L_1$)
-    and structuring clean paragraphs.
+    Strictly preserves verbatim wording, phrasing, and context while formatting
+    LaTeX math ($W$, $b$, $x_i$, $L_1$) and structuring clean paragraphs.
     """
     if not transcript_text.strip():
         return ""
 
     prompt_template = """
-    You are an expert technical editor creating a Markdown study guide from a video lecture transcript. Your goal is to make the text clean, articulate, and highly readable while staying faithful to the speaker's explanations and tone.
+    You are a technical editor converting a video lecture transcript into a readable Markdown lecture note.
+
+    Your goal is to make ONLY minimal editorial changes to convert spoken transcript into clean lecture notes while keeping all content, phrasing, and full context intact.
 
     Guidelines:
-    1. **Light Rephrasing for Readability:** Light rephrasing is encouraged to convert spoken speech into smooth, professional written prose. Fix run-on sentences, awkward speech transitions, and minor grammar issues. Do NOT heavily summarize or remove technical details, explanations, or examples.
-    2. **Format Math as LaTeX:** Convert all mathematical symbols, variables, loss functions, vectors, and Greek letters into LaTeX (e.g., $W$, $b$, $x_i$, $\hat{y}$, $\alpha$, $\lambda$, $L_1$, $L_2$, $$...$$).
-    3. **Paragraph Structure:** Organize the text into logical, readable paragraphs of 2-4 sentences each.
-    4. **Output Only Markdown:** Output only the cleaned, polished Markdown text. Do not include commentary, meta-talk, or extra header tags.
+    1. **Strictly Preserve Verbatim Text & Context:** Keep the speaker's exact words, sentences, explanations, examples, and phrasing. Do NOT rewrite, summarize, condense, or paraphrase. The text differences between the input and output must be minimal.
+    2. **Minimal Editorial Cleanups Only:** Remove verbal filler words ("um", "uh", stuttered duplicate words), fix capitalization at sentence starts, and correct punctuation. Do NOT alter the vocabulary or sentence structure.
+    3. **Format All Math and Variables as LaTeX:** Convert all mathematical symbols, variables, indices, loss functions, vectors, matrices, and Greek letters into LaTeX (e.g., $W$, $b$, $x_i$, $y_i$, $\hat{y}$, $\alpha$, $\lambda$, $L_1$, $L_2$, $\sum$, $$...$$).
+    4. **Paragraph Structure:** Organize the verbatim sentences into natural, readable paragraphs separated by a blank line (2–4 sentences per paragraph).
+    5. **Output Only Markdown:** Output ONLY the edited Markdown text. Do NOT add preamble, commentary, meta-talk, notes, or extra markdown headers.
 
     Lecture Transcript:
     __TRANSCRIPT_PLACEHOLDER__
 
-    Polished Markdown:
+    Markdown Lecture Note:
     """
     prompt = prompt_template.replace('__TRANSCRIPT_PLACEHOLDER__', transcript_text)
 
@@ -70,30 +73,25 @@ def process_text_chunk(transcript_text, model_name, retries=3, delay=5):
     if not transcript_text.strip():
         return ""
     
-    # Use a placeholder and .replace() to build the prompt. This is the most robust
-    # method, as it avoids any and all parsing errors from special characters
-    # like backslashes and curly braces that are common in the LaTeX examples.
     prompt_template = """
-    You are an expert technical editor creating a Markdown study guide compatible with MarkText from a raw lecture transcript. Your primary goal is to clean the text while preserving the speaker's original wording and flow as closely as possible.
+    You are a technical editor converting a video lecture transcript into a Markdown lecture note compatible with MarkText.
 
-    Your tasks are:
-    1.  **Clean, Don't Rewrite:** Correct grammar, fix typos, and remove filler words (like "um", "uh"). Do NOT rephrase sentences or alter the core vocabulary. The output should feel like a polished version of the original speech, not a summary.
-    2.  **Aggressively Format All Math as LaTeX:** This is the most critical task. Be extremely vigilant in identifying and formatting anything that looks like a mathematical concept, variable, or equation into LaTeX for MarkText.
-        - **Variables and Symbols:** Convert all single-letter variables (like `W`, `b`, `x_i`, `y_hat`), Greek letters (`alpha`, `beta`), and mathematical symbols into inline LaTeX (e.g., $W$, $b$, $x_i$, $\hat{y}$, $\alpha$).
-        - **Equations:** Wrap all equations, from simple assignments to complex loss functions, in display LaTeX (`$$...$$`).
-        - **MarkText Compatibility:**
-            - For subscripts, use a simple underscore. For example, convert "f sub 1" into $f_1$. Common ML terms like "L1" or "L2" should become $L_1$ and $L_2$. Do not write out the word "sub".
-            - For text inside equations, always use `\mathrm{...}`, not `\text{...}`. For example: $$\mathrm{Data~Loss}$$.
-            - When referring to a loss for a specific variable, prefer functional notation, e.g., $\mathrm{Loss}(W_1)$ instead of $\mathrm{Loss}_{W_1}$.
-            - Do not escape underscores in commands like `\sum_{...}`.
-            - For absolute value, use `\lvert` and `\rvert` for correct spacing, e.g., $\lvert -5 \rvert$.
-    3.  **Create Short, Readable Paragraphs:** As a technical writer, you know that long walls of text are hard to read. Group sentences into short paragraphs of 2-4 sentences each. Start a new paragraph (with a double newline) to break up the text for readability.
-    4.  **Output Only Markdown:** Produce only the final, cleaned Markdown text. Do not add any headers, introductions, horizontal rules (`---` or `***`), or other text that wasn't in the original transcript.
+    Your goal is to make ONLY minimal editorial changes to convert spoken transcript into clean lecture notes while keeping all content, phrasing, and full context intact.
 
-    Raw Transcript:
+    Guidelines:
+    1. **Strictly Preserve Verbatim Text & Context:** Keep the speaker's exact words, explanations, examples, and phrasing. Do NOT rewrite, summarize, condense, or paraphrase. The text differences between the input and output must be minimal.
+    2. **Minimal Editorial Cleanups Only:** Remove verbal filler words ("um", "uh"), fix capitalization, and correct punctuation. Do NOT alter vocabulary or sentence structure.
+    3. **Format All Math as LaTeX:** Convert all variables (e.g., $W$, $b$, $x_i$, $y_i$, $\hat{y}$), Greek letters ($\alpha$, $\beta$, $\lambda$), and equations into inline ($...$) or block ($$...$$) LaTeX.
+        - Subscripts: use simple underscore ($f_1$, $L_1$, $L_2$, $x_i$).
+        - Text inside math: use `\mathrm{...}` (e.g., $\mathrm{Loss}(W)$).
+        - Absolute values: use `\lvert` and `\rvert`.
+    4. **Paragraph Structure:** Group the verbatim sentences into readable paragraphs (2–4 sentences each) separated by a blank line.
+    5. **Output Only Markdown:** Output ONLY the final edited text without conversational intro/outro or meta commentary.
+
+    Lecture Transcript:
     __TRANSCRIPT_PLACEHOLDER__
     
-    Cleaned Markdown:
+    Markdown Lecture Note:
     """
     prompt = prompt_template.replace('__TRANSCRIPT_PLACEHOLDER__', transcript_text)
 

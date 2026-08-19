@@ -10,7 +10,7 @@ except Exception:
     pass
 
 from . import utils
-from .downloader import download_media
+from .downloader import download_media, get_playlist_and_video_info
 from .slide_detector import detect_slides
 from .transcript_parser import parse_transcript
 from .llm_processor import check_ollama_server
@@ -26,7 +26,8 @@ def main():
     core_group = parser.add_argument_group("Core Parameters")
     core_group.add_argument("--video_list_url", "--playlist_url", "--video_url", required=True, help="YouTube playlist, video list, or direct video URL.")
     core_group.add_argument("--index", "--playlist_index", type=int, default=1, help="1-based index of the video in the playlist (default: 1).")
-    core_group.add_argument("--output_prefix", "--prefix", "--output_name", "--pdf", default=None, help="Prefix name for generated output files (e.g., lecture_3). Default: lecture_<index>.")
+    core_group.add_argument("--playlist_dir", "--course_dir", default=None, help="Root directory name for the playlist (default: derived from YouTube playlist title).")
+    core_group.add_argument("--output_prefix", "--prefix", "--output_name", "--pdf", default=None, help="Prefix name for generated output files (e.g., lecture_03_loss_functions). Default: auto-derived from video title.")
     core_group.add_argument("--model", default="gemma4:latest", help="Name of the local Ollama model to use for text cleaning.")
 
     # --- Transcript & Note Generation ---
@@ -59,24 +60,27 @@ def main():
 
     utils.VERBOSE = args.verbose or args.debug
 
+    # Fetch Playlist & Video Metadata
+    playlist_title, default_playlist_dir, video_title, video_slug = get_playlist_and_video_info(args.video_list_url, index=args.index)
+
     if args.output_prefix:
         clean_prefix = os.path.basename(args.output_prefix.split('?')[0])
         base_name = os.path.splitext(clean_prefix)[0]
-        # Normalize lecture_3 -> lecture_03 for consistent 2-digit sorting
         if base_name.startswith("lecture_"):
             num_part = base_name.replace("lecture_", "")
             if num_part.isdigit():
                 base_name = f"lecture_{int(num_part):02d}"
     else:
-        base_name = f"lecture_{args.index:02d}"
+        base_name = video_slug
 
-    # Directory Structure
-    LECTURES_DIR = "lectures"
-    LECTURE_DIR = os.path.join(LECTURES_DIR, base_name)
-    SLIDE_DIR = os.path.join(LECTURE_DIR, "slides")
+    course_dir = args.playlist_dir or default_playlist_dir
+
+    # Directory Structure under course_dir
+    LECTURES_DIR = os.path.join(course_dir, "lectures")
+    SLIDE_DIR = os.path.join(LECTURES_DIR, f"lecture_{args.index:02d}_slides")
     os.makedirs(SLIDE_DIR, exist_ok=True)
 
-    CACHE_DIR = "lectures_cache"
+    CACHE_DIR = os.path.join(course_dir, "lectures_cache")
     MEDIA_DIR = os.path.join(CACHE_DIR, "media")
     SLIDE_CSV_DIR = os.path.join(CACHE_DIR, "slide_csv")
     LOGS_DIR = os.path.join(CACHE_DIR, "logs")
@@ -90,15 +94,17 @@ def main():
     open(utils.LOG_FILE, 'w', encoding='utf-8').close()
 
     # --- PRE-FLIGHT CHECKS ---
+    utils.log(f"Course: '{playlist_title}' -> directory: '{course_dir}/'", always=True)
+    utils.log(f"Lecture: '{video_title}' -> slug: '{base_name}'", always=True)
     utils.log("Performing pre-flight checks...", always=True)
     if not check_ollama_server():
         sys.exit(1)
 
-    video_path, transcript_path, is_creator_subtitle = download_media(args.video_list_url, index=args.index, media_dir=MEDIA_DIR)
-    slides_data = detect_slides(video_path, SLIDE_DIR, SLIDE_CSV_FILE, args, slide_prefix=base_name)
+    video_path, transcript_path, is_creator_subtitle = download_media(args.video_list_url, index=args.index, media_dir=MEDIA_DIR, base_name=base_name)
+    slides_data = detect_slides(video_path, SLIDE_DIR, SLIDE_CSV_FILE, args, slide_prefix="slide")
     overlap = 0 if is_creator_subtitle else args.overlap_duration
     transcript_chunks = parse_transcript(transcript_path, chunk_duration=args.chunk_duration, overlap_duration=overlap)
-    output_md_path = os.path.join(LECTURE_DIR, f"{base_name}_study_guide.md")
+    output_md_path = os.path.join(LECTURES_DIR, f"{base_name}.md")
     generate_study_guide(
         output_md_path,
         transcript_chunks,
@@ -108,7 +114,8 @@ def main():
         args.llm_retries,
         args.llm_retry_delay,
         is_creator_subtitle=is_creator_subtitle,
-        img_width=args.img_width
+        img_width=args.img_width,
+        doc_title=video_title
     )
 
     utils.log("Complete!", always=True)

@@ -14,10 +14,13 @@ __pycache__/
 # Intermediate cache, downloaded files, and final outputs
 # These are generated/downloaded by the scripts and can be large or numerous.
 lectures_cache/
+**/lectures_cache/
 temp_cache/
 *.pdf
 
 # IDE and OS specific files
 .vscode/
 .idea/
+.obsidian/
 .DS_Store
+Thumbs.db

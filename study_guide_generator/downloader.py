@@ -1,8 +1,67 @@
 import os
+import re
 import yt_dlp
 from .utils import log
-
 import shutil
+
+def sanitize_slug(text, index=1):
+    """
+    Sanitizes a title into a clean slug, extracting lecture numbers and topics.
+    e.g. 'Stanford CS231N | Spring 2025 | Lecture 3: Loss Functions and Optimization'
+    -> 'lecture_03_notes_loss_functions_and_optimization'
+    """
+    cleaned = re.sub(r'[\\/:*?"<>|]', '', str(text))
+    match = re.search(r'Lecture\s*(\d+)[:\s]*(.*)', cleaned, re.IGNORECASE)
+    if match:
+        lec_num = int(match.group(1))
+        topic = match.group(2).strip()
+        topic_slug = re.sub(r'[^a-zA-Z0-9]+', '_', topic).strip('_').lower()
+        if topic_slug:
+            return f"lecture_{lec_num:02d}_notes_{topic_slug}"
+        return f"lecture_{lec_num:02d}_notes"
+    slug = re.sub(r'[^a-zA-Z0-9]+', '_', cleaned).strip('_').lower()
+    return f"lecture_{index:02d}_notes_{slug}".strip('_')
+
+def get_playlist_and_video_info(playlist_url, index=1):
+    """
+    Fast metadata extraction (without downloading media).
+    Returns (playlist_title, playlist_dir_name, video_title, video_slug).
+    """
+    index = max(1, int(index))
+    ydl_opts = {
+        'extract_flat': True,
+        'skip_download': True,
+        'playlist_items': str(index),
+        'nocheckcertificate': True,
+        'quiet': True,
+    }
+
+    playlist_title = "Course_Lectures"
+    video_title = f"Lecture {index:02d}"
+    video_slug = f"lecture_{index:02d}"
+
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(str(playlist_url).strip(), download=False)
+            if info:
+                playlist_title = info.get('title') or playlist_title
+                entries = info.get('entries') or []
+                if entries and entries[0]:
+                    v_entry = entries[0]
+                    video_title = v_entry.get('title') or video_title
+                elif info.get('_type') == 'video':
+                    video_title = info.get('title') or video_title
+    except Exception as e:
+        log(f"Metadata extraction warning: {e}. Using fallback naming.", always=True)
+
+    # Clean playlist directory name
+    p_clean = re.sub(r'[\\/:*?"<>|]', '', playlist_title)
+    playlist_dir_name = re.sub(r'[\s\-_]+', '_', p_clean).strip('_')
+
+    # Clean video slug
+    video_slug = sanitize_slug(video_title, index)
+
+    return playlist_title, playlist_dir_name, video_title, video_slug
 
 def _find_subtitle_file(base):
     for ext in ['.en-US.vtt', '.en.vtt', '.en-orig.vtt', '.en-US.srt', '.en.srt', '.vtt', '.srt']:
@@ -38,13 +97,13 @@ def _migrate_legacy_media(base_name, media_dir):
             log(f"[*] Moving legacy '{legacy_sub}' into '{media_dir}/'...", always=True)
             shutil.move(legacy_sub, target_sub)
 
-def download_subtitles(playlist_url, index=1, media_dir=os.path.join("lectures_cache", "media")):
+def download_subtitles(playlist_url, index=1, media_dir=os.path.join("lectures_cache", "media"), base_name=None):
     """
     Downloads subtitles only. If creator-uploaded 'en-US' is available, downloads only 'en-US'.
     Returns (sub_file_path, is_creator_subtitle).
     """
     index = max(1, int(index))
-    base_name = f"lecture_{index:02d}"
+    base_name = base_name or f"lecture_{index:02d}"
     os.makedirs(media_dir, exist_ok=True)
     _migrate_legacy_media(base_name, media_dir)
     base = os.path.join(media_dir, base_name)
@@ -125,14 +184,14 @@ def _is_valid_video(video_path):
     """Verifies that a video exists and is at least 10MB (not a partial stub)."""
     return os.path.exists(video_path) and os.path.getsize(video_path) >= 10 * 1024 * 1024
 
-def download_video(playlist_url, index=1, media_dir=os.path.join("lectures_cache", "media")):
+def download_video(playlist_url, index=1, media_dir=os.path.join("lectures_cache", "media"), base_name=None):
     """
     Downloads only the video and audio stream for a specific playlist item.
     Uses browser cookies and JS solver to bypass YouTube bot detection.
     Returns video_path.
     """
     index = max(1, int(index))
-    base_name = f"lecture_{index:02d}"
+    base_name = base_name or f"lecture_{index:02d}"
     os.makedirs(media_dir, exist_ok=True)
     _migrate_legacy_media(base_name, media_dir)
     base = os.path.join(media_dir, base_name)
@@ -182,14 +241,14 @@ def download_video(playlist_url, index=1, media_dir=os.path.join("lectures_cache
 
     return video_path
 
-def download_media(playlist_url, index=1, media_dir=os.path.join("lectures_cache", "media")):
+def download_media(playlist_url, index=1, media_dir=os.path.join("lectures_cache", "media"), base_name=None):
     """
     Downloads subtitles and video separately for a specific playlist item.
     Skips downloading if the video and subtitle files are already cached locally.
     Returns (video_path, sub_file_path, is_creator_subtitle).
     """
     index = max(1, int(index))
-    base_name = f"lecture_{index:02d}"
+    base_name = base_name or f"lecture_{index:02d}"
     os.makedirs(media_dir, exist_ok=True)
     _migrate_legacy_media(base_name, media_dir)
     base = os.path.join(media_dir, base_name)
@@ -202,6 +261,6 @@ def download_media(playlist_url, index=1, media_dir=os.path.join("lectures_cache
         log(f"[*] Media for {base_name} already found locally ('{video_path}', '{sub_file}'). Skipping all downloads.", always=True)
         return video_path, sub_file, is_creator
 
-    sub_file, is_creator_subtitle = download_subtitles(playlist_url, index, media_dir=media_dir)
-    video_path = download_video(playlist_url, index, media_dir=media_dir)
+    sub_file, is_creator_subtitle = download_subtitles(playlist_url, index, media_dir=media_dir, base_name=base_name)
+    video_path = download_video(playlist_url, index, media_dir=media_dir, base_name=base_name)
     return video_path, sub_file, is_creator_subtitle

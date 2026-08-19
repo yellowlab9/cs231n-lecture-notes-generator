@@ -9,15 +9,9 @@ VERBOSE_FLAG ?= --verbose
 DISPLAY_FLAG ?= --display
 DEBUG_FLAG   ?= --debug
 
-LECTURE_NUM := $(shell printf "%02d" $(LECTURE) 2>/dev/null || echo $(LECTURE))
-OUTPUT_PREFIX ?= lecture_$(LECTURE_NUM)
 IMG_WIDTH ?= 75%
 PDF_ENGINE ?= xelatex
-
-LECTURE_DIR ?= lectures/$(OUTPUT_PREFIX)
-MD_FILE ?= $(LECTURE_DIR)/$(OUTPUT_PREFIX)_study_guide.md
-PDF_DIR ?= lectures_pdf
-PDF_FILE ?= $(PDF_DIR)/$(OUTPUT_PREFIX)_study_guide.pdf
+PREFIX_FLAG ?= $(if $(OUTPUT_PREFIX),--output_prefix $(OUTPUT_PREFIX),)
 
 # Phony targets
 .PHONY: notes pdf clean clean_slides clean_cache clean_pdf debug-args vscode-launch
@@ -30,34 +24,32 @@ notes:
 	@echo "Generating Notes for Lecture $(LECTURE) (Index $(INDEX))"
 	@echo "Playlist URL: $(PLAYLIST_URL)"
 	@echo "Model: $(MODEL)"
-	@echo "Output: $(MD_FILE)"
+	@echo "Image Width: $(IMG_WIDTH)"
 	@echo "=========================================================="
-	$(PYTHON) generate_notes.py --video_list_url "$(PLAYLIST_URL)" --index $(INDEX) --output_prefix $(OUTPUT_PREFIX) --model $(MODEL) --img_width $(IMG_WIDTH) $(VERBOSE_FLAG) $(DISPLAY_FLAG) $(DEBUG_FLAG)
+	"$(PYTHON)" generate_notes.py --video_list_url "$(PLAYLIST_URL)" --index $(INDEX) $(PREFIX_FLAG) --model $(MODEL) --img_width $(IMG_WIDTH) $(VERBOSE_FLAG) $(DISPLAY_FLAG) $(DEBUG_FLAG)
 
 # Convert Markdown study guide to PDF via Pandoc
 pdf:
 	@echo "=========================================================="
-	@echo "Converting $(MD_FILE) -> $(PDF_FILE) via Pandoc ($(PDF_ENGINE))"
+	@echo "Converting Study Guide to PDF for Lecture $(LECTURE) via Pandoc ($(PDF_ENGINE))"
 	@echo "=========================================================="
-	@mkdir -p "$(PDF_DIR)"
-	pandoc "$(MD_FILE)" -o "$(PDF_FILE)" --pdf-engine=$(PDF_ENGINE) --resource-path="$(LECTURE_DIR)" --lua-filter=study_guide_generator/html_filter.lua
-	@echo "Done! Generated $(PDF_FILE)"
+	@"$(PYTHON)" -m study_guide_generator.compile_pdf --lecture $(LECTURE) --engine $(PDF_ENGINE)
 
 # Clean up local environment
 clean:
 	@echo "Cleaning up lectures, pdfs, and cache..."
-	rm -rf lectures_cache/
-	rm -rf lectures/
-	rm -rf $(PDF_DIR)/
+	rm -rf lectures_cache/ */lectures_cache/
+	rm -rf lectures/ */lectures/
+	rm -rf lectures_pdf/ */lectures_pdf/
 	rm -f *.mp4 *.m4a *.vtt *.srt *.part *.pdf *.md *.csv *.txt
 
 clean_cache:
 	@echo "Cleaning up temporary media and slide caches..."
-	rm -rf lectures_cache/
+	rm -rf lectures_cache/ */lectures_cache/
 
 clean_pdf:
-	@echo "Cleaning up compiled PDFs in $(PDF_DIR)..."
-	rm -rf $(PDF_DIR)/
+	@echo "Cleaning up compiled PDFs..."
+	rm -rf lectures_pdf/ */lectures_pdf/
 	
 clean_slides:
 	@echo "Cleaning up slides..."
