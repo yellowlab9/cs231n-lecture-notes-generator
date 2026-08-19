@@ -81,7 +81,7 @@ def get_sentence_timestamp(cleaned_sentence, original_chunk, score_cutoff=50):
     estimated_time = segment_start + (segment_duration * progress)
     return estimated_time
 
-def generate_study_guide(output_path, transcript_chunks, slides_data, model_name, fuzzy_score_threshold=50, llm_retries=3, llm_retry_delay=5, is_creator_subtitle=False, img_width="75%", doc_title=None):
+def generate_study_guide(output_path, transcript_chunks, slides_data, model_name, fuzzy_score_threshold=50, llm_retries=3, llm_retry_delay=5, is_creator_subtitle=False, img_width="75%", doc_title=None, fontsize="14pt"):
     """
     Generates and saves the final Markdown study guide.
     Guarantees slides are placed strictly BETWEEN complete sentences,
@@ -161,10 +161,16 @@ def generate_study_guide(output_path, transcript_chunks, slides_data, model_name
     slide_idx = 0
     num_slides = len(sorted_slides)
 
+    fs_val = str(fontsize).strip()
+    if fs_val.isdigit():
+        fs_val = f"{fs_val}pt"
+
     notes = [
         "---\n",
+        "documentclass: extarticle\n",
         "papersize: letter\n",
         'geometry: "margin=0.75in"\n',
+        f"fontsize: {fs_val}\n",
         "---\n\n",
     ]
     if doc_title:

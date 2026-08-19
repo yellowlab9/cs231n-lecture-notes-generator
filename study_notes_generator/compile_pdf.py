@@ -4,7 +4,7 @@ import glob
 import argparse
 import subprocess
 
-def compile_lecture_pdf(lecture, engine="xelatex"):
+def compile_lecture_pdf(lecture, engine="xelatex", fontsize=None):
     """
     Finds the markdown study guide for the given lecture and compiles it to PDF
     inside the parent course's lectures_pdf/ directory.
@@ -55,6 +55,12 @@ def compile_lecture_pdf(lecture, engine="xelatex"):
         f"--lua-filter={lua_filter}"
     ]
 
+    if fontsize:
+        fs_clean = str(fontsize).strip()
+        if fs_clean.isdigit():
+            fs_clean = f"{fs_clean}pt"
+        cmd.extend(["-V", "documentclass=extarticle", "-V", f"fontsize={fs_clean}"])
+
     res = subprocess.run(cmd, cwd=lec_dir)
     if res.returncode == 0:
         print(f"Done! Generated {pdf_path} ({os.path.getsize(pdf_path)} bytes)")
@@ -67,9 +73,10 @@ def main():
     parser = argparse.ArgumentParser(description="Compile lecture Markdown study guide to PDF.")
     parser.add_argument("--lecture", "-l", required=True, help="Lecture number or prefix (e.g. 1, 01, lecture_01).")
     parser.add_argument("--engine", "-e", default="xelatex", help="LaTeX engine to use (default: xelatex).")
+    parser.add_argument("--fontsize", "--font_size", "-f", default=None, help="Font size override for PDF (e.g. 10pt, 12pt, 14pt).")
     args = parser.parse_args()
 
-    sys.exit(compile_lecture_pdf(args.lecture, engine=args.engine))
+    sys.exit(compile_lecture_pdf(args.lecture, engine=args.engine, fontsize=args.fontsize))
 
 if __name__ == "__main__":
     main()

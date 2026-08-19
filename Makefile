@@ -10,6 +10,7 @@ DISPLAY_FLAG ?= --display
 DEBUG_FLAG   ?= --debug
 
 IMG_WIDTH ?= 75%
+FONT_SIZE ?= 14pt
 PDF_ENGINE ?= xelatex
 PREFIX_FLAG ?= $(if $(OUTPUT_PREFIX),--output_prefix $(OUTPUT_PREFIX),)
 
@@ -25,15 +26,16 @@ notes:
 	@echo "Playlist URL: $(PLAYLIST_URL)"
 	@echo "Model: $(MODEL)"
 	@echo "Image Width: $(IMG_WIDTH)"
+	@echo "Font Size: $(FONT_SIZE)"
 	@echo "=========================================================="
-	"$(PYTHON)" generate_notes.py --video_list_url "$(PLAYLIST_URL)" --index $(INDEX) $(PREFIX_FLAG) --model $(MODEL) --img_width $(IMG_WIDTH) $(VERBOSE_FLAG) $(DISPLAY_FLAG) $(DEBUG_FLAG)
+	"$(PYTHON)" generate_notes.py --video_list_url "$(PLAYLIST_URL)" --index $(INDEX) $(PREFIX_FLAG) --model $(MODEL) --img_width $(IMG_WIDTH) --fontsize $(FONT_SIZE) $(VERBOSE_FLAG) $(DISPLAY_FLAG) $(DEBUG_FLAG)
 
 # Convert Markdown study guide to PDF via Pandoc
 pdf:
 	@echo "=========================================================="
-	@echo "Converting Study Guide to PDF for Lecture $(LECTURE) via Pandoc ($(PDF_ENGINE))"
+	@echo "Converting Study Guide to PDF for Lecture $(LECTURE) via Pandoc ($(PDF_ENGINE), $(FONT_SIZE))"
 	@echo "=========================================================="
-	@"$(PYTHON)" -m study_guide_generator.compile_pdf --lecture $(LECTURE) --engine $(PDF_ENGINE)
+	@"$(PYTHON)" -m study_notes_generator.compile_pdf --lecture $(LECTURE) --engine $(PDF_ENGINE) --fontsize $(FONT_SIZE)
 
 # Clean up local environment
 clean:
