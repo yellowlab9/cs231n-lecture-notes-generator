@@ -15,9 +15,11 @@ PDF_ENGINE ?= xelatex
 PREFIX_FLAG ?= $(if $(OUTPUT_PREFIX),--output_prefix $(OUTPUT_PREFIX),)
 
 # Phony targets
-.PHONY: notes pdf pdf-all ipynb sync clean clean_slides clean_cache clean_pdf debug-args vscode-launch
+.PHONY: notes pdf pdf-all ipynb sync release clean clean_slides clean_cache clean_pdf debug-args vscode-launch
 
 PYTHON ?= python
+TAG ?= v1.0.0
+TITLE ?= Stanford CS231N Study Notes ($(TAG))
 
 # Default target
 notes:
@@ -57,6 +59,13 @@ sync:
 	@echo "Synchronizing all paired .md and .ipynb notes via Jupytext"
 	@echo "=========================================================="
 	@"$(PYTHON)" -c "import glob, subprocess; files = glob.glob('**/lectures/lecture_*_notes_*.md', recursive=True); [subprocess.run(['$(PYTHON)', '-m', 'jupytext', '--sync', f]) for f in files]"
+
+# Publish/Upload compiled PDFs to GitHub Releases via gh CLI
+release:
+	@echo "=========================================================="
+	@echo "Publishing GitHub Release $(TAG) with compiled PDFs"
+	@echo "=========================================================="
+	@"$(PYTHON)" -c "import glob, subprocess; pdfs = sorted(glob.glob('**/lectures_pdf/lecture_*_notes_*.pdf', recursive=True)); cmd = ['gh', 'release', 'create', '$(TAG)'] + pdfs + ['--title', '$(TITLE)', '--notes', 'High-fidelity lecture study guides (14pt XeLaTeX PDFs) with slide captures.', '--verify-tag']; subprocess.run(cmd)"
 
 # Clean up local environment
 clean:
