@@ -1,0 +1,20 @@
+# Video Downloading & Subtitles
+yt-dlp>=2024.0.0
+requests>=2.31.0
+
+# Video Processing & Slide Extraction
+av>=11.0.0
+opencv-python>=4.8.0
+numpy>=1.24.0
+scipy>=1.10.0
+
+# LLM Text Processing & Formatting
+ollama>=0.2.0
+nltk>=3.8.0
+rapidfuzz>=3.0.0
+fuzzywuzzy>=0.18.0
+python-Levenshtein>=0.21.0
+
+# Jupyter Notebook Two-Way Pairing
+jupytext>=1.16.0
+ipykernel>=6.29.0
