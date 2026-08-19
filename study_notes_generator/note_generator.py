@@ -167,6 +167,16 @@ def generate_study_guide(output_path, transcript_chunks, slides_data, model_name
 
     notes = [
         "---\n",
+        "jupyter:\n",
+        "  jupytext:\n",
+        "    formats: ipynb,md\n",
+        "    text_representation:\n",
+        "      extension: .md\n",
+        "      format_name: markdown\n",
+        "  kernelspec:\n",
+        "    display_name: Python 3 (ipykernel)\n",
+        "    language: python\n",
+        "    name: python3\n",
         "documentclass: extarticle\n",
         "papersize: letter\n",
         'geometry: "margin=0.75in"\n',
@@ -174,8 +184,16 @@ def generate_study_guide(output_path, transcript_chunks, slides_data, model_name
         "---\n\n",
     ]
     if doc_title:
-        notes.append(f"# {doc_title}\n\n")
+        notes.append(f"<!-- #region -->\n# {doc_title}\n<!-- #endregion -->\n\n")
+
     current_p_sentences = []
+    in_region = False
+
+    def close_region():
+        nonlocal in_region
+        if in_region:
+            notes.append("<!-- #endregion -->\n\n")
+            in_region = False
 
     def flush_paragraph():
         nonlocal current_p_sentences
@@ -204,12 +222,18 @@ def generate_study_guide(output_path, transcript_chunks, slides_data, model_name
 
         if slides_to_insert:
             flush_paragraph()
+            close_region()
+            notes.append("<!-- #region -->\n")
+            in_region = True
             for sl in slides_to_insert:
                 img_path = sl['img'].replace('\\', '/')
                 if not img_path.startswith('./'):
                     img_path = f"./{img_path.lstrip('/')}"
                 slide_ts = sl.get('timestamp') or f"{int(sl['time']//3600):02d}:{int((sl['time']%3600)//60):02d}:{int(sl['time']%60):02d}"
                 notes.append(f'<p align="center"><img src="{img_path}" width="{width_str}" alt="Lecture Video at {slide_ts}" /></p>\n\n')
+        elif not in_region and not notes[-1].endswith("<!-- #region -->\n"):
+            notes.append("<!-- #region -->\n")
+            in_region = True
 
         current_p_sentences.append(sent_text)
 
@@ -220,6 +244,7 @@ def generate_study_guide(output_path, transcript_chunks, slides_data, model_name
 
     # Flush any remaining sentences
     flush_paragraph()
+    close_region()
 
     # Append any remaining slides after speech ends
     while slide_idx < num_slides:
@@ -228,7 +253,7 @@ def generate_study_guide(output_path, transcript_chunks, slides_data, model_name
         if not img_path.startswith('./'):
             img_path = f"./{img_path.lstrip('/')}"
         slide_ts = sl.get('timestamp') or f"{int(sl['time']//3600):02d}:{int((sl['time']%3600)//60):02d}:{int(sl['time']%60):02d}"
-        notes.append(f'<p align="center"><img src="{img_path}" width="{width_str}" alt="Lecture Video at {slide_ts}" /></p>\n\n')
+        notes.append(f'<!-- #region -->\n<p align="center"><img src="{img_path}" width="{width_str}" alt="Lecture Video at {slide_ts}" /></p>\n<!-- #endregion -->\n\n')
         slide_idx += 1
 
     # 3. Write final markdown study guide

@@ -43,6 +43,16 @@ def compile_lecture_pdf(lecture, engine="xelatex", fontsize=None):
     pdf_filename = f"{base_name}.pdf"
     pdf_path = os.path.join(pdf_dir, pdf_filename)
 
+    # Check if target PDF is locked by an open PDF reader on Windows
+    if os.path.exists(pdf_path):
+        try:
+            with open(pdf_path, "a+"):
+                pass
+        except PermissionError:
+            print(f"\n[ERROR] Cannot overwrite '{pdf_filename}' because it is currently open in a PDF reader or browser.", file=sys.stderr)
+            print(f"[TIP] Please close '{pdf_filename}' in your PDF viewer and run the command again.\n", file=sys.stderr)
+            return 1
+
     lua_filter = os.path.abspath(os.path.join(os.path.dirname(__file__), "html_filter.lua"))
 
     print(f"Converting: {os.path.basename(md_path)} -> {os.path.relpath(pdf_path)}")
