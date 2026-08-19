@@ -20,7 +20,7 @@ This generator is applicable to lecture video with talking heads interleved with
 
 Generated course assets follow a clean, flattened layout:
 
-`	ext
+```bash
 Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/
 ├── lectures/
 │   ├── lecture_01_notes_introduction.md
@@ -40,7 +40,7 @@ Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/
     ├── media/
     ├── slide_csv/
     └── logs/
-`
+```
 
 ---
 
@@ -48,23 +48,23 @@ Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/
 
 1. **Python 3.10+** (Conda recommended)
 2. **[Ollama](https://ollama.com/)** with a local model:
-   `ash
+   ```bash  
    ollama pull gemma4:latest
-   `
+   ```
 3. **[Pandoc](https://pandoc.org/)** & **XeLaTeX** (TeX Live or MiKTeX) for PDF generation.
 
 ---
 
 ## Installation
 
-`ash
+```bash
 # Clone the repository
-git clone https://github.com/<YOUR_USERNAME>/<YOUR_REPO>.git
-cd <YOUR_REPO>
+git clone https://github.com/yellowlab9/cs231n-lecture-notes-generator.git
+cd cs231n-lecture-notes-generator
 
 # Install Python dependencies
 pip install -r requirements.txt
-`
+```
 
 ---
 
@@ -72,35 +72,35 @@ pip install -r requirements.txt
 
 ### 1. Generate Notes & Slides
 Generate Markdown study notes and extract slides for a specific lecture:
-`ash
+```bash
 # Default Lecture 1
 make notes LECTURE=1
 
 # Or specify a model
 make notes LECTURE=2 MODEL=gemma4:latest
-`
+```
 
 ### 2. Compile to PDF
 Compile the Markdown notes into a 14pt PDF:
-`ash
+```bash
 # Default 14pt
 make pdf LECTURE=1
 
 # Custom font size on the fly:
 make pdf LECTURE=1 FONT_SIZE=12pt
-`
+```
 
 ### 3. Pair with Jupyter Notebook (.ipynb)
 Generate or pair the .ipynb notebook with the Markdown note:
-`ash
+```bash
 make ipynb LECTURE=1
-`
+```
 
 ### 4. Synchronize Edits (.md $\leftrightarrow$ .ipynb)
 Synchronize changes between Markdown notes and Jupyter Notebooks across the entire workspace:
-`ash
+```bash
 make sync
-`
+``` 
 
 ---
 
@@ -108,9 +108,9 @@ make sync
 
 You can also run the generator directly via Python:
 
-`ash
+```bash
 python generate_notes.py --help
-`
+```
 
 Key arguments:
 - --video_list_url: YouTube playlist or video URL.
