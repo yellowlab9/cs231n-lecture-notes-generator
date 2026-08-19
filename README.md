@@ -16,6 +16,20 @@ This generator is applicable to lecture video with talking heads interleved with
 
 ---
 
+## 📥 Download Compiled PDFs (Releases)
+
+Pre-compiled, publication-quality 14pt PDFs with high-resolution slide captures are available on the **[GitHub Releases Page](https://github.com/yellowlab9/cs231n-lecture-notes-generator/releases)**:
+
+- 📄 **[Release v1.0.0 (Lectures 1 to 6)](https://github.com/yellowlab9/cs231n-lecture-notes-generator/releases/tag/v1.0.0)**
+  - Lecture 01: Introduction
+  - Lecture 02: Image Classification with Linear Classifiers
+  - Lecture 03: Regularization and Optimization
+  - Lecture 04: Neural Networks and Backpropagation
+  - Lecture 05: Image Classification with CNNs
+  - Lecture 06: CNN Architectures
+
+---
+
 ## Directory Structure
 
 Generated course assets follow a clean, flattened layout:
