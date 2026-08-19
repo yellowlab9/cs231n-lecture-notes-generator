@@ -1,15 +1,17 @@
 # Study Notes Generator 🎓
 
-An automated, end-to-end pipeline that converts video lecture playlists (YouTube) into high-fidelity Markdown study notes, paired interactive Jupyter Notebooks (.ipynb), and publication-quality XeLaTeX PDFs.
+An automated, end-to-end pipeline that converts video lecture playlists (YouTube) into high-fidelity Markdown study notes, paired interactive Jupyter Notebooks (.ipynb), and publication-quality XeLaTeX PDFs. 
+
+This generator is applicable to lecture video with talking heads interleved with lecture slides. Example videos include the lectures of Stanford CS231N Deep Learning for Computer Vision I 2025, with playlist url: https://www.youtube.com/playlist?list=PLoROMvodv4rOmsNzYBMe0gJY2XS8AQg16. 
 
 ---
 
 ## Key Features
 
-- **🎥 High-Fidelity Slide Detection:** Decodes frames via PyAV and detects slide transitions using OpenCV and Kernel Density Estimation (KDE) mode-image extraction.
+- **🎥 High-Fidelity Slide Detection and Extraction:** Decodes frames via PyAV and detects slide transitions using OpenCV and Kernel Density Estimation (KDE) mode-image extraction.
 - **🤖 Minimal-Difference LLM Formatting:** Cleans raw speech into clear paragraphs and standard LaTeX mathematical formulas using local Ollama LLMs (e.g. gemma4:latest, qwen2.5) while strictly preserving verbatim explanations and examples.
 - **📓 Two-Way Jupytext Pairing (.md $\leftrightarrow$ .ipynb):** Encapsulates each slide and its corresponding explanation into explicit cell regions (<!-- #region -->), allowing seamless two-way editing in MarkText, Obsidian, VS Code, or JupyterLab.
-- **📄 Publication-Quality PDFs:** Converts Markdown notes directly to XeLaTeX PDFs using Pandoc with native LaTeX captions, non-floating [H] figures, and configurable font sizes (14pt default via extarticle).
+- **📄 Publication-Quality PDFs:** Converts Markdown notes directly to XeLaTeX PDFs using Pandoc with native LaTeX captions, non-floating [H] figures, and configurable font sizes (14pt default via extarticle for viewing on screen). If you need to print it out, you can change the font size to 12pt.
 - **⚡ Self-Recovering Cache:** Skips repeated video downloads and slide extraction when cached assets exist.
 
 ---
