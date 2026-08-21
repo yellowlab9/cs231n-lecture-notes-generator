@@ -20,13 +20,33 @@ This generator is applicable to lecture video with talking heads interleved with
 
 Pre-compiled, publication-quality 14pt PDFs with high-resolution slide captures are available on the **[GitHub Releases Page](https://github.com/yellowlab9/cs231n-lecture-notes-generator/releases)**:
 
-- 📄 **[Release v1.0.0 (Lectures 1 to 6)](https://github.com/yellowlab9/cs231n-lecture-notes-generator/releases/tag/v1.0.0)**
-  - Lecture 01: Introduction
-  - Lecture 02: Image Classification with Linear Classifiers
-  - Lecture 03: Regularization and Optimization
-  - Lecture 04: Neural Networks and Backpropagation
-  - Lecture 05: Image Classification with CNNs
-  - Lecture 06: CNN Architectures
+- 📄 **[Release v2.0.0: Complete Course (Lectures 1 to 18)](https://github.com/yellowlab9/cs231n-lecture-notes-generator/releases/tag/v2.0.0)** *(Full 18-lecture bundle)*
+- 📄 **[Release v1.0.0: Part 1 Foundations (Lectures 1 to 6)](https://github.com/yellowlab9/cs231n-lecture-notes-generator/releases/tag/v1.0.0)**
+
+---
+
+## 📚 Course Curriculum & Study Guides
+
+| Lecture | Topic | Study Note (`.md`) | Interactive Notebook (`.ipynb`) |
+| :--- | :--- | :--- | :--- |
+| **01** | Introduction to Deep Learning for Computer Vision | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_01_notes_introduction.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_01_notes_introduction.ipynb) |
+| **02** | Image Classification with Linear Classifiers | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_02_notes_image_classification_with_linear_classifiers.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_02_notes_image_classification_with_linear_classifiers.ipynb) |
+| **03** | Regularization and Optimization | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_03_notes_regularization_and_optimization.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_03_notes_regularization_and_optimization.ipynb) |
+| **04** | Neural Networks and Backpropagation | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_04_notes_neural_networks_and_backpropagation.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_04_notes_neural_networks_and_backpropagation.ipynb) |
+| **05** | Image Classification with CNNs | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_05_notes_image_classification_with_cnns.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_05_notes_image_classification_with_cnns.ipynb) |
+| **06** | CNN Architectures | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_06_notes_cnn_architectures.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_06_notes_cnn_architectures.ipynb) |
+| **07** | Recurrent Neural Networks (RNNs) | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_07_notes_recurrent_neural_networks.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_07_notes_recurrent_neural_networks.ipynb) |
+| **08** | Attention and Transformers | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_08_notes_attention_and_transformers.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_08_notes_attention_and_transformers.ipynb) |
+| **09** | Object Detection, Image Segmentation & Visualizing | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_09_notes_object_detection_image_segmentation_visualizing.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_09_notes_object_detection_image_segmentation_visualizing.ipynb) |
+| **10** | Video Understanding | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_10_notes_video_understanding.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_10_notes_video_understanding.ipynb) |
+| **11** | Large-Scale Distributed Training | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_11_notes_large_scale_distributed_training.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_11_notes_large_scale_distributed_training.ipynb) |
+| **12** | Self-Supervised Learning | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_12_notes_self_supervised_learning.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_12_notes_self_supervised_learning.ipynb) |
+| **13** | Generative Models (Part 1) | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_13_notes_generative_models_1.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_13_notes_generative_models_1.ipynb) |
+| **14** | Generative Models (Part 2) | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_14_notes_generative_models_2.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_14_notes_generative_models_2.ipynb) |
+| **15** | 3D Vision | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_15_notes_3d_vision.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_15_notes_3d_vision.ipynb) |
+| **16** | Vision and Language | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_16_notes_vision_and_language.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_16_notes_vision_and_language.ipynb) |
+| **17** | Robot Learning | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_17_notes_robot_learning.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_17_notes_robot_learning.ipynb) |
+| **18** | Human-Centered AI | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_18_notes_human_centered_ai.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_18_notes_human_centered_ai.ipynb) |
 
 ---
 

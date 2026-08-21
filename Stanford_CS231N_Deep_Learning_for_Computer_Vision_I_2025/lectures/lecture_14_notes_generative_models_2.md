@@ -1,0 +1,861 @@
+---
+documentclass: extarticle
+papersize: letter
+geometry: "margin=0.75in"
+fontsize: 14pt
+jupyter:
+  jupytext:
+    formats: ipynb,md
+    text_representation:
+      extension: .md
+      format_name: markdown
+      format_version: '1.3'
+      jupytext_version: 1.19.5
+  kernelspec:
+    display_name: Python 3 (ipykernel)
+    language: python
+    name: python3
+---
+
+# Stanford CS231N Deep Learning for Computer Vision | Spring 2025 | Lecture 14: Generative Models 2
+
+
+<p align="center"><img src="./lecture_14_slides/slide_4_00-00-00.133.jpg" width="75%" alt="Lecture Video at 00:00:00.133" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_272_00-00-09.066.jpg" width="75%" alt="Lecture Video at 00:00:09.066" /></p>
+
+Last time we were talking about generative models. We talked about discriminative models where you're trying to predict the label $y$ conditioned on your data $x$.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_1946_00-01-04.866.jpg" width="75%" alt="Lecture Video at 00:01:04.866" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_2992_00-01-39.733.jpg" width="75%" alt="Lecture Video at 00:01:39.733" /></p>
+
+Autoregressive models work by taking our image, or more generally whatever kind of data we're working with, and breaking it up into a sequence. For image data, we typically treat this as a sequence of pixel values or even subpixel values, which we usually want to be discrete. You treat those pixel values as 8-bit integers that can each take a value from 0 to 255.
+
+You string this out into a long sequence of integers and then model this using some discrete autoregressive sequence model, typically an RNN or a transformer.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_3962_00-02-12.066.jpg" width="75%" alt="Lecture Video at 00:02:12.066" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_5604_00-03-06.800.jpg" width="75%" alt="Lecture Video at 00:03:06.800" /></p>
+
+Today, we are going to continue our discussion and explore the other half of the family tree: implicit density models. In implicit density models, we are no longer going to get access to an actual density value $p(x)$, but these models will implicitly model the probability distribution. Even though we can't compute a density value $p(x)$ for any piece of data $x$, we will be able to sample from the underlying distribution that these models learn.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_6486_00-03-36.200.jpg" width="75%" alt="Lecture Video at 00:03:36.200" /></p>
+
+The first such model we'll explore are Generative Adversarial Networks, or usually called GANs.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_6684_00-03-42.800.jpg" width="75%" alt="Lecture Video at 00:03:42.800" /></p>
+
+It is useful to contrast GANs with variational autoencoders and autoregressive models that we've seen so far. Like we just said, autoregressive models are a likelihood-based method; their training objective is maximum likelihood. Variational autoencoders follow this similar idea, where we write down an approximation to $p(x)$ and then maximize that approximation to $p(x)$.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_7656_00-04-15.200.jpg" width="75%" alt="Lecture Video at 00:04:15.200" /></p>
+
+Generative adversarial networks will do something a little bit different.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_8156_00-04-31.866.jpg" width="75%" alt="Lecture Video at 00:04:31.866" /></p>
+
+The setup here is that we start with some finite samples of data, $\{X_i\}$, which are assumed to be drawn from some true data distribution $\text{p}_{\text{data}}$. Our goal is we want to be able to draw samples from $\text{p}_{\text{data}}$, and recall that $\text{p}_{\text{data}}$ is something like the true distribution of the universe. There's a lot of complication going into all the stuff happening in the universe that gives rise to the data that you see, and somehow we want to fit an approximate model.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_9596_00-05-19.866.jpg" width="75%" alt="Lecture Video at 00:05:19.866" /></p>
+
+So the way that we're going to do this is by introducing a latent variable $z$. And now the setup is that we're going to imagine some data generating process that our network is going to model. So here we're going to imagine that we sample a $z$ according to our known distribution $p(z)$ to get a sample $z$, pass that sample $z$ through a generator network, $G(z)$.
+
+And then that $x$ is going to be a sample from some generated distribution $P_G$.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_12084_00-06-42.800.jpg" width="75%" alt="Lecture Video at 00:06:42.800" /></p>
+
+So the picture for this is something like the following. We'll imagine sampling $z$ from our $p(z)$ to get a concrete latent $z$, pass it through our generator $G$, and that will give us a generated image. The generator network basically is trained to convert a sample from a known distribution, $z$, into a sample of our data distribution. But now the question is, how can we force these outputs?
+
+How can we force the induced generator distribution $P_G$? How can we force this to match the data distribution $p_{data}$? And the trick in generative adversarial networks is that we're going to introduce another neural network to do that task for us. Here we're going to relinquish that control and basically ask another neural network to solve that task for us.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_13664_00-07-35.466.jpg" width="75%" alt="Lecture Video at 00:07:35.466" /></p>
+
+In particular, we're going to train another neural network called the discriminator, $D$. And this discriminator is going to be tasked with inputting an image, sometimes a real image, sometimes a fake image. And it's going to classify whether that image was fake or real.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_14190_00-07-53.000.jpg" width="75%" alt="Lecture Video at 00:07:53.000" /></p>
+
+And then the idea is that these two networks are going to fight. And the intuition is that as these two networks fight, then ideally the discriminator will get better. It will get really good. The discriminator will get really good at determining features of real data from fake data.
+
+So that's the kind of intuition between generative adversarial networks. So a question is does the generator network get feedback from the discriminator on whether it's classifying correctly? Yes, and that's crucial for this whole process working. And the type of feedback it gets is gradients.
+
+This whole thing, this composite system of the generator and the discriminator are just neural networks. We know how to compute gradients through those, and those communicate through that generated image. So we're going to backpropagate from the discriminator all the way through the generated image into the generator. So that's how the generator is going to learn from the discriminator.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_16272_00-09-02.400.jpg" width="75%" alt="Lecture Video at 00:09:02.400" /></p>
+
+And then more concretely we need to write down some actual equations, some actual math that we're going to use to concretize this intuition. So in particular, we're going to jointly train the generator $G$ and the discriminator $D$ with this minimax game:
+$$ \min_G \max_D V(D, G) $$
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_16818_00-09-20.600.jpg" width="75%" alt="Lecture Video at 00:09:20.600" /></p>
+
+This equation looks maybe a little bit daunting, so we'll walk through each of the terms one by one. So here we're going to color code this and say that the generator is going to be in blue, the discriminator is going to be in red. And the discriminator is going to be a function that inputs a piece of data $x$ and outputs the probability that data is real.
+
+In particular, $D(x) = 0$ means that the discriminator has classified that piece of data $x$ as fake. $D(x) = 1$ means that the discriminator has classified that piece of data as real. Of course, those are the extreme cases.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_17788_00-09-52.933.jpg" width="75%" alt="Lecture Video at 00:09:52.933" /></p>
+
+The discriminator in practice will output some probability that gives you a soft version in between those two decisions. Now imagine what happens if we fix the generator $G$. And just imagine this problem from the perspective of the discriminator. So then from the perspective of the discriminator there's two terms here.
+
+One, this first term says the discriminator wants $D(x) = 1$ for real data. Remember $D(x) = 1$ means that the discriminator says that it's real. This expectation says we're going to draw data samples $x$ from the true $p_{data}$ distribution. We're going to pass those through the discriminator and then take a log, because we almost always work in log space when working with probabilities.
+
+Remember that $\log$ is a monotonic function, so maximizing $\log(D(x))$ is the same as maximizing $D(x)$. In this case, this is saying that we want to maximize $\log(D(x))$ for real data, which is equivalent to saying $D(x) = 1$ for real data. Now on the other side, this is saying that we're going to take an expectation by sampling latents $z$ according to our known prior $p_z$.
+
+We're going to take those $z$'s, pass them through the generator, which should give us a generated data sample, and then pass that generated data sample through the discriminator. The discriminator wants to classify these as fake, so we need to somehow invert that expression on the left. So here, we want $D(x) = 0$ for fake. One way to say that is $\max \log(1 - D(G(z)))$.
+
+This term on the right says the discriminator wants $D(x) = 0$ for fake data, and the term on the left says the discriminator wants $D(x) = 1$ for real data. OK, so that's what the discriminator is trying to do.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_21106_00-11-43.533.jpg" width="75%" alt="Lecture Video at 00:11:43.533" /></p>
+
+Now look at this from the perspective of the generator. Imagine fixing the discriminator and looking at this setup only from the perspective of a generator with a fixed discriminator. In this case, this first term doesn't depend on the generator at all because this first term was just about getting the discriminator to correctly classify the real data samples.
+
+The generator only cares about this term on the right.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_22884_00-12-42.800.jpg" width="75%" alt="Lecture Video at 00:12:42.800" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_23492_00-13-03.066.jpg" width="75%" alt="Lecture Video at 00:13:03.066" /></p>
+
+Intuitively, we want the generator to fool the discriminator into thinking that its samples are real. That means that the generator wants $D(x) = 1$ for fake data. So the term is the same. Recall the generator wants $D(x) = 1$.
+
+Instead of maximizing this like the discriminator wanted to, we are going to try to minimize this from the perspective of the generator. And that gives us this minimax game. In particular, we can abstract away all this math by writing it as some scalar function $V$ as a function of $G$ and $D$. We say that the discriminator wants to maximize $V$, the generator wants to minimize $V$, and they're going to fight against each other in that way.
+
+That's basically our training.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_25352_00-14-05.066.jpg" width="75%" alt="Lecture Video at 00:14:05.066" /></p>
+
+That's basically the way that we train generative adversarial networks. We have this thing, $V$, which is the value of our minimax game. We are going to take alternating gradient ascent and gradient descent weights on that objective $V$, alternatively updating the generator and discriminator. One thing that's really important to realize when we're training generative adversarial networks is that this $V$ is not a loss function.
+
+Just looking at the value of $V$ doesn't really tell us anything about that because the value of $V$ depends on how good the discriminator is. If the discriminator is really bad, then it's really easy for the generator to fool this and get good numbers. Or if the discriminator is really good, then the generator has to be really good. So there can be different settings of $D$ and $G$ that will lead to the exact same value for $V$.
+
+And that means that generative adversarial networks are often really hard to train and even hard to tell when they are doing a good job at training. Normally, when you train neural networks, you have a loss. You have the generator loss. You have the discriminator loss.
+
+You can try to plot them, but in general, they are pretty meaningless. With generative adversarial networks, they are really hard to train. One, this objective is fundamentally unstable. You're trying to jointly maximize and minimize the same quantity with respect to different sets of parameters of the network, so that's kind of inherently a difficult optimization problem.
+
+And then even worse, you don't have any value to look at to tell whether or not you're making progress towards a good solution. So generative adversarial networks are pretty effective, but they're really hard to train and really hard to tune and really hard to make progress on. That's the main takeaway for generative adversarial networks.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_28578_00-15-52.600.jpg" width="75%" alt="Lecture Video at 00:15:52.600" /></p>
+
+There is one little trick that is kind of useful to think about for when training GANs: just to imagine the training dynamics of these things. At the very start, imagine at the beginning of training your generator randomly initialized; your discriminator is randomly initialized. What's going to happen? Well, at the very start of training, then your generator is producing completely random noise.
+
+That completely random noise is going to look very different from real images. So at the very beginning of training, when the generator is terrible, then the discriminator has a very easy problem. That means that at the very start of training, the discriminator is quickly going to learn to classify these real and fake pretty quickly with pretty high probability.
+
+It's interesting to plot what is $D(G(z))$? Sorry, what is this term as a function of $D(G(z))$ because that's basically the loss function from the perspective of the generator. From the perspective of the generator, we are at the beginning of training somewhere all the way over here.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_30636_00-17-01.200.jpg" width="75%" alt="Lecture Video at 00:17:01.200" /></p>
+
+The discriminator is doing a really good job at treating generated samples as fake, classifying them as fake at the beginning of training. This means that from the discriminator's perspective, it's trying to optimize a loss function that looks something like this. If you notice something, this loss function is flat or very close to flat at the place where the generator is trying to optimize its parameters.
+
+Regarding data set assembly—how do we generate a photo of a unicorn if no unicorn exists? That's your choice of $p_{data}$. Whatever data set you happen to assemble from your training set, that's choosing what is the $p_{data}$ that you're trying to model. In general, if you want to generate a sample of a thing that looks nothing like anything that you've ever seen before, you're out of luck; it's not going to happen.
+
+The only way generally to draw samples is if you have something in your training data set that looks kind of like that. All generative models and all neural networks really do generalize a little bit. That is always the hope here. What does this look like from the discriminator's perspective?
+
+In practice, discriminators tend not to really be that smart. The idea is: why don't we look at two curves? Why don't we look at one curve saying how good the discriminator is? Why don't we look at one curve saying how good the generator is?
+
+They tend to look really useless. There are probably literally hundreds of research papers of people trying to solve this problem and figure out how do we tweak the GAN objective? How do we not use a log? How do we use a Wasserstein something, something-something?
+
+Hundreds of papers written about it; five years of thousands of people's time—I don't think anybody came up with a good solution. The question is what happens to the discriminator early in training? It's really important, and the answer is no because this is unlike any other classification problem we've ever seen before. When you train an image classifier on ImageNet or CIFAR or something like that, the data set is fixed, and the model is just trying to classify that static data set well.
+
+But in the case of GAN training, the data set that it's trying to fit is changing. During the course of training, because even at the beginning of training maybe the generated images look really bad, it's easy to solve the problem, but then the generator gets better. And now the data set that the discriminator is trying to discriminate changes under it during the course of training.
+
+So that means that it's a non-stationary problem with very complicated learning dynamics. Good question. Do these get caught in local minima? Are there ways to kick them out of local minima, train for a while, kick them out?
+
+I think again, hundreds of papers, thousands of papers, lots of heuristics—nothing really sticks. So you have to train this end-to-end. Gradients from the discriminator always propagate into the generator, so in particular through this term on the right. The only way that you're ever getting gradients onto the generator's parameters is actually through the discriminator.
+
+I mean, unless you have some regularizer in here, but there's no auxiliary term that's telling the generator what to do other than the gradients that get through the discriminator. And that's again leading to part of the unstable learning problem. So that $p_{\text{data}}$ distribution is going to stay fixed over the course of training. All right.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_38596_00-21-26.533.jpg" width="75%" alt="Lecture Video at 00:21:26.533" /></p>
+
+We said there's this problem that the generator gets low gradients at the course of training. There's a little hack here where rather than trying to maximize $\log(1 - D(G(z)))$, you can instead minimize $-\log(D(G(z)))$ instead. So that's really important. And whenever you're training GANs from scratch using this log objective, then this trick to use the modified loss for the generator is really important in practice.
+
+So that means that there actually is a $V$ that you're computing for the generator, a different $V$ that you're computing for the discriminator, and they aren't quite the same.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_39730_00-22-04.333.jpg" width="75%" alt="Lecture Video at 00:22:04.333" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_39836_00-22-07.866.jpg" width="75%" alt="Lecture Video at 00:22:07.866" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_39860_00-22-08.666.jpg" width="75%" alt="Lecture Video at 00:22:08.666" /></p>
+
+Okay, there's another question of why might this be a good objective. I used to have slides that walked through this proof step by step, but I don't think we have time for that today.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_40182_00-22-19.400.jpg" width="75%" alt="Lecture Video at 00:22:19.400" /></p>
+
+So this is a nested optimization problem where there's an inner maximization over $D$, and an outer minimization over $G$. If you do a little bit of math, you can actually solve this in this inner maximization problem and write down what the optimal discriminator is. This should actually be the—this is the optimal discriminator with respect to a particular generator $G$.
+
+And you can just write this down. Of course, even though you can write it down, you can never compute it because it depends on $p_{\text{data}}$. And you can never compute $p_{\text{data}}$ because if you had access to the $p_{\text{data}}$ density, you'd be done. So you can write this down as an equation on a slide or on a piece of paper, but you can never compute it.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_41528_00-23-04.266.jpg" width="75%" alt="Lecture Video at 00:23:04.266" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_42268_00-23-28.933.jpg" width="75%" alt="Lecture Video at 00:23:28.933" /></p>
+
+So that makes us feel good, but there are a lot of caveats to that theoretical result. This also tells us absolutely nothing about whether or not we will converge to this solution.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_43668_00-24-15.600.jpg" width="75%" alt="Lecture Video at 00:24:15.600" /></p>
+
+In practice, your generator $G$ and your discriminator $D$ are both going to be parametrized as neural networks. And they used to be CNNs. The GANs kind of fell out of favor before ViTs became popular, but I'm sure they would work with ViTs as well.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_44884_00-24-56.133.jpg" width="75%" alt="Lecture Video at 00:24:56.133" /></p>
+
+GPT. GPT. So, Alec Radford: DC-GAN was kind of a low light in his career. He went on to do GPT-1 and GPT-2, as well as some other amazing work at OpenAI.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_45504_00-25-16.800.jpg" width="75%" alt="Lecture Video at 00:25:16.800" /></p>
+
+And one of the only other GAN papers that I'm going to highlight is called StyleGAN. I'm not really going to walk you through the details of this one, other than to point you at it as a good one to read if you want to know the best practices of GANs. They use a much more complicated architecture, but they get pretty good results in practice.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_46020_00-25-34.000.jpg" width="75%" alt="Lecture Video at 00:25:34.000" /></p>
+
+One really nice thing about GANs is that they actually tend to learn something smooth in the latent space. For every point along the curve, we're going to generate a sample using our generator. If we do that, we tend to get smooth interpolations through this latent space, which is something really cool with GANs. Here's an example of this latent space interpolation from the StyleGAN3 paper.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_47794_00-26-33.133.jpg" width="75%" alt="Lecture Video at 00:26:33.133" /></p>
+
+I used to talk a lot more about Generative Adversarial Networks. The pros is basically they have a fairly simple formulation. If you tune them right, like we saw with StyleGAN3, they can actually give you very nice results—very beautiful images, very high resolution, very good stuff. But the cons, like one we talked about, is that they're fairly unstable to train.
+
+You have no loss curve to look at; you have very unstable training. They tend to blow up at the drop of a hat, so you end up with what's called mode collapse. All of a sudden, you might get $\text{NaN}$s. You might get $\text{Inf}$s.
+
+Your discriminator starts going crazy; your generator starts producing complete random garbage all the time. You have no loss curves to look at to diagnose this. They're kind of a mess. GANs were basically the go-to category of generative models from around 2016 to maybe around 2020, 2021, something around there.
+
+This was basically the go-to generative modeling framework for about five or six years. The question is: should we just expect this? Shouldn't we just expect these smooth latents to pop out? I think not necessarily, because one thing that can happen with GANs is the generator might just memorize a fixed number of data samples.
+
+What if your generator ignores the latent $z$ and just memorizes 10 samples from the training data set somehow? In that case, you're going to fool the discriminator because the generator is always giving you something which is maybe bitwise identical to one of your real samples. That actually is a legitimate solution for the generator, and it would definitely not give you smooth latents at all.
+
+That's just one example of how these things can collapse into unintuitive solutions that are not what you want. What is the relationship between your training data set and your latents? This is something very fundamental about GANs—it is a great question. The generator gives you a mapping from latent space into data space, maps from $z$ to an $x$.
+
+But with GANs, you in general have no way to map back from an $x$ to a $z$. That's something very different between GANs and $\text{VAEs}$. VAEs will learn an explicit mapping from $x$ to $z$, but with GANs, you have no such thing. Of course, when it comes to GANs, anything you probably think about, there's probably at least a dozen papers about.
+
+There are also a lot of papers about GAN variants that try to learn bidirectional mappings both ways, but those never really took off. When we went to VAEs, we gained latent vectors, but we gave up density. And now with GANs, it seems like we gave up latent vectors that we can control. What you gained was much better samples.
+
+When it comes to VAEs, they tend not to give you very good samples; $\text{VAEs}$ are characteristically always blurry. They never really look good. But what you lost was your sanity in trying to tune these systems. Yeah, at inference time you throw away the discriminator and just use the generator.
+
+So at inference you'll just draw a sample $z$ from the prior, pass through the generator, [and] get your sample from your data. So it's very, very efficient at inference time. All right. So I mentioned that GANs used to be the go-to category of generative modeling for about five or six years.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_55594_00-30-53.133.jpg" width="75%" alt="Lecture Video at 00:30:53.133" /></p>
+
+So what displaced them? And what displaced them was a very different category of models called diffusion models.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_55822_00-31-00.733.jpg" width="75%" alt="Lecture Video at 00:31:00.733" /></p>
+
+Now I need to put some caveats here. Diffusion model literature is crazy. You read these papers, they go through five pages of math before they tell you at all what's going on. And there are three different mathematical formalisms that lead to diffusion models that are all very different mathematically.
+
+There's very different notation, very different terminology, and very different mathematical formalisms between papers. So this is a subarea that's crazy. I need to put a big caveat here that I'm not going to cover fully all the different variants of diffusion models with all of their proper mathematical formalism.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_57442_00-31-54.733.jpg" width="75%" alt="Lecture Video at 00:31:54.733" /></p>
+
+So with that caveat aside, the intuition behind diffusion models is actually easy. With all generative models, we want to draw samples. And like GANs, we want to convert samples from a noise distribution $z$ into a data distribution, $p_x$. But the way that we're going to do that in diffusion models is totally different.
+
+GANs learn this deterministic mapping through the generator to map a $z$ directly to an $x$. With a diffusion model, we're going to do something more implicit, more indirect. What we're going to do first off: the first constraint in diffusion models is that the $z$, the noise distribution, the noise always has to have the same shape as our data. So if you have an image that's $H$ by $W$ by 3, then your noise distribution always has to be $H$ by $W$ by 3 as well.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_58856_00-32-41.866.jpg" width="75%" alt="Lecture Video at 00:32:41.866" /></p>
+
+They have to be exactly the same shape. Now what we're going to do is consider different versions of our data that are corrupted by increasing levels of noise. Here, if we have a data sample, which is this picture of a cat, then $t$ is going to be our noise level, which ranges from 0 to 1. So at $t=0$, that means no noise.
+
+That means a totally clean data sample. At $t=0.3$ there is a little bit of noise. We add some of our noise $z$ into—we mix some of our noise $z$ into our data, $x$. And if we go all the way to $t=1$, we get full noise.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_60426_00-33-34.200.jpg" width="75%" alt="Lecture Video at 00:33:34.200" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_61274_00-34-02.466.jpg" width="75%" alt="Lecture Video at 00:34:02.466" /></p>
+
+Those are going to be samples directly from our noise distribution. Somehow this $t$ parameter is going to interpolate smoothly between our data distribution and our noise distribution. Now what we're going to do is train a neural network to do a little bit of incremental denoising. The neural network is going to receive some sample, which is a piece of data which has been corrupted with some intermediate amount of noise.
+
+And now the neural network is going to be trained to try to clean it up a little bit, remove just a little bit of noise. The training objective here is going to be: neural network inputs, an image of some amount with some amount of noise, and it tries to remove some of the noise. The very first time we do this, we're going to draw a complete sample that's complete noise.
+
+And then the very first application of the neural network, the network will be trying to remove noise from full noise. So it will basically be forced to hallucinate just a tiny whiff of data structure in that noise. It'll get a little bit less noisy, and it'll get a little bit less noisy, and it'll get a little bit less noisy. So that's a weird setting.
+
+It's a weird thing, but that's the intuition behind diffusion models. Is the number of steps a fixed hyperparameter? It depends. On this slide, I've intentionally been—I was forced to be very vague about all these things.
+
+What is the noise? What does it mean to corrupt the data with respect to the noise? What does it mean to remove a little bit of the noise? What does it mean to apply it iteratively at inference?
+
+Because there are so many different formalisms of diffusion, there are a lot of different variants about exactly what these mean in different situations. This slide is intended to be a fairly high-level overview of diffusion. Different specific implementations of diffusion models will have different concrete choices for what all these terms specifically mean.
+
+Does this high-level picture of diffusion make sense? Let's then make this more concrete. We are going to jump from general diffusion models to a particular category of diffusion models called rectified flow models. Some people may argue that rectified flow is not diffusion, or that they are different things.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_65072_00-36-09.066.jpg" width="75%" alt="Lecture Video at 00:36:09.066" /></p>
+
+To me, rectified flow is a kind of diffusion model. With rectified flow, the intuition is basically this: we have $p_{\text{noise}}$, we have $p_{\text{data}}$. We are going to draw this geometrically because I think that's a nice way to gain intuition. Geometrically in two dimensions in particular because that's all that fits on the slide.
+
+It is really sad. Always be aware, but it is what it is; we are stuck with the universe we got. The setup in rectified flow is that we have our distribution $p_{\text{noise}}$ and our distribution $p_{\text{data}}$. $p_{\text{noise}}$ is something simple that we understand we can sample from or compute integrals of.
+
+It's a very friendly distribution.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_66968_00-37-12.266.jpg" width="75%" alt="Lecture Video at 00:37:12.266" /></p>
+
+$p_{\text{data}}$, again, is something crazy—that's what the universe is using to give us images. At every training iteration, we are going to sample a $z$ from our prior distribution and sample an $x$ from our data distribution. We can draw a sample analytically because $p_z$ is something simple that we control. Drawing a sample from the data distribution just means picking an example from your finite training set.
+
+You are also going to choose a $t$ to be uniform on 0 to 1. Remember, $t$ is our noise level, where $t=0$ means no noise and $t=1$ means all the noise.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_67874_00-37-42.466.jpg" width="75%" alt="Lecture Video at 00:37:42.466" /></p>
+
+We are going to draw a line that points from our data sample $x$ directly to our noise sample $z$. This line, this vector pointing from $x$ to $z$, we are going to call it $\mathbf{v}$. This is going to be the velocity of a flow field. Then we set $x_t$ to be a point along this line, which is a linear interpolation between $x$ and $z$.
+
+In the previous slide when we said get noisy data, this is what that means in the case of rectified flow models: it's a linear interpolation between a data sample and a noise sample.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_69198_00-38-26.600.jpg" width="75%" alt="Lecture Video at 00:38:26.600" /></p>
+
+The training objective is very simple. We are going to train a neural network $f_{\theta}$, where $\theta$ represents learnable parameters. That neural network will input the noisy sample $x_t$ as well as the noise level $t$. It's going to try to predict the green vector $\mathbf{v}$.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_69764_00-38-45.466.jpg" width="75%" alt="Lecture Video at 00:38:45.466" /></p>
+
+That's it. That's all we need to do in rectified flow. The training loop for rectified flow is extremely simple: You loop over your data set at every iteration. You get $z$, which is unit Gaussian of the same shape as $x$.
+
+You choose a noise level $t$, which is uniform 0 to 1. You compute $x_t$, which is a linear interpolation between $x$ and $z$. You give $x_t$ and $t$ to your model, and then your loss is just the mean squared error between this ground truth $\mathbf{v}$ and the model prediction. That's your training objective for rectified flow models.
+
+Contrast this with GANs. When you train rectified flow models or really any kind of diffusion model, you have a loss that you can look at during training. When the loss goes down, the model is generally better. It’s like reading tea leaves to tell whether or not the model is working well.
+
+You train a diffusion model, you get this beautiful, smooth exponential loss curve, and it just makes you so happy. So that's great. That's training for diffusion models. Now what do we do at inference?
+
+The GANs are kind of easy at inference: GANs, you just have to take a $z$, pass it through your generator, and you get a data sample. Very straightforward. But now with the diffusion model or rectified flow model in this case, the model output itself is useless. We get this $x_t$.
+
+We get a $\mathbf{v}$. What are we going to do with this? Not super clear. At inference time, is where diffusion models get a little bit more complicated compared to GANs.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_72946_00-40-31.533.jpg" width="75%" alt="Lecture Video at 00:40:31.533" /></p>
+
+At inference, we first will upfront choose a number of steps, $T$, which is usually a fixed constant. In the case of rectified flow models, $t = 50$ is usually a good number to start with.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_73392_00-40-46.400.jpg" width="75%" alt="Lecture Video at 00:40:46.400" /></p>
+
+Sometimes you can get down to $t = 30$, and that works OK. Then what you're going to do is sample an $\mathbf{x}$ directly from your noise distribution. This is going to be pure noise that's sampled from your known noise distribution.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_73634_00-40-54.466.jpg" width="75%" alt="Lecture Video at 00:40:54.466" /></p>
+
+Then you're going to loop from $t=1$. You're going to march backwards to $t=0$. This is your noise level. In this simple version, we're just marching linearly from full noise 1 back to noise 0, perfectly clean.
+
+Remember what this $v_t$ is supposed to be in the case of rectified flow. This $v$, remember, was supposed to point from a data sample all the way to a noise sample.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_74866_00-41-35.533.jpg" width="75%" alt="Lecture Video at 00:41:35.533" /></p>
+
+So then it's geometrically obvious what you should do in the case of rectified flow. You should take a little step along that predicted $v$ vector because the problem is, this rectified flow model: that $v$ is not going to point you all the way to a clean sample. It's just going to get you started; it's going to set you on a trajectory towards a clean sample.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_75566_00-41-58.866.jpg" width="75%" alt="Lecture Video at 00:41:58.866" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_75598_00-41-59.933.jpg" width="75%" alt="Lecture Video at 00:41:59.933" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_75668_00-42-02.266.jpg" width="75%" alt="Lecture Video at 00:42:02.266" /></p>
+
+Now we iterate this. Once we have this $\mathbf{x}_{2/3}$, then we pass it back to the model and get another predicted $v$ vector from the model. Again, we can take a gradient step, take a little step along this predicted $v$ to get another $\mathbf{x}_{1/3}$.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_76046_00-42-14.866.jpg" width="75%" alt="Lecture Video at 00:42:14.866" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_76168_00-42-18.933.jpg" width="75%" alt="Lecture Video at 00:42:18.933" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_76500_00-42-30.000.jpg" width="75%" alt="Lecture Video at 00:42:30.000" /></p>
+
+That is our sample from our diffusion model. The inference procedure you see here got a little bit more complicated compared to GANs, but what we gained here was sanity.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_77104_00-42-50.133.jpg" width="75%" alt="Lecture Video at 00:42:50.133" /></p>
+
+The code here is really simple. We start off by taking a random sample, making it perfectly random, then marching backwards for $t$ from 1 back to 0. At every noise level, you get a predicted $v$ from the model, given your current sample as well as your $T$. Then you take what looks like a gradient descent step on the model's predicted $v$ and update the sample and just repeat this whole thing in a loop.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_77764_00-43-12.133.jpg" width="75%" alt="Lecture Video at 00:43:12.133" /></p>
+
+So you can see these diffusion models aren't so scary after all. You are hitting on the core problem in generative modeling that I've been thinking about a lot the last couple of days while reviewing these slides. The core problem in generative modeling is how you have a prior distribution, which is $z$'s that you know how to sample from. You have a data distribution, which is $\mathbf{x}$'s that you want to generate.
+
+In a GAN, you are not supervising that relationship. In diffusion, it ends up having to integrate these curves. But again, the whole core problem is that we have no way ahead of time to pair up samples $z$ from our prior with samples $\mathbf{x}$ from our data. If we knew how to make that pairing and also knew how to sample from the prior, you'd be done.
+
+There's a lot of different interpretations of this that can get very, very heavy, very quick, so I've tried to avoid them. But we said last lecture that unconditional generative modeling is pointless, so what we almost always care about is conditional generative modeling. And that's easy to accommodate in rectified flow. So to do conditional rectified flow, we imagine that there are different subparts of our data distribution.
+
+Here I'm saying it's categorical; maybe our data is actually squares and triangles. And then we have our whole data distribution $p_{\text{data}}$, as well as our two subdistributions: $p(x | y = \text{square})$ and $p(x | y = \text{triangle})$.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_82454_00-45-48.466.jpg" width="75%" alt="Lecture Video at 00:45:48.466" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_82686_00-45-56.200.jpg" width="75%" alt="Lecture Video at 00:45:56.200" /></p>
+
+So this is the picture you should have in mind when you think about conditional generative modeling. Then, in the case of rectified flow, this is very easy to accommodate.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_82992_00-46-06.400.jpg" width="75%" alt="Lecture Video at 00:46:06.400" /></p>
+
+Your data set now has pairs $x$ and $y$, and your model now takes $y$ as an additional auxiliary input somehow. During sampling, it's the same thing: you get your predicted vectors $\mathbf{v}$. The model takes this extra $y$ as input, and you use that information. All of this goes through.
+
+The difference is that $y$ is actually hopefully some conditional signal that the user can control.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_83796_00-46-33.200.jpg" width="75%" alt="Lecture Video at 00:46:33.200" /></p>
+
+But then there's another really interesting question: Is there any knob you can tune to control how much the model pays attention to the conditioning signal? It turns out if you train these things naively, a lot of times they don't often follow the conditioning signal quite as much as you would like.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_84210_00-46-47.000.jpg" width="75%" alt="Lecture Video at 00:46:47.000" /></p>
+
+So, there's a trick called classifier-free guidance (CFG) that changes our diffusion training loop just a little bit. If that coin is heads, we're going to delete the conditioning information. We're going to set it equal to some kind of 0 value or null value—basically destroying the conditioning information 50% of the time. That could be a hyperparameter, but $0.5$ is a pretty good one that most people use in practice.
+
+So we are going to flip a coin. If the coin is heads, delete the conditioning information.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_85462_00-47-28.733.jpg" width="75%" alt="Lecture Video at 00:47:28.733" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_85512_00-47-30.400.jpg" width="75%" alt="Lecture Video at 00:47:30.400" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_85572_00-47-32.400.jpg" width="75%" alt="Lecture Video at 00:47:32.400" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_85584_00-47-32.800.jpg" width="75%" alt="Lecture Video at 00:47:32.800" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_85664_00-47-35.466.jpg" width="75%" alt="Lecture Video at 00:47:35.466" /></p>
+
+This means that the model is conceptually now forced to learn two different kinds of velocity vectors.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_85700_00-47-36.666.jpg" width="75%" alt="Lecture Video at 00:47:36.666" /></p>
+
+In the case where we pass it this null value for $y$ (that has destroyed the conditioning information), then this is basically an unconditional generative model now.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_86268_00-47-55.600.jpg" width="75%" alt="Lecture Video at 00:47:55.600" /></p>
+
+That predicted velocity vector $\mathbf{v}$ has to point back towards the meat of the whole data distribution, $p_{\text{data}}$.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_86804_00-48-13.466.jpg" width="75%" alt="Lecture Video at 00:48:13.466" /></p>
+
+The trick is that we are going to take a linear combination of these two vectors to push it more towards the conditional velocity vector. In particular, we'll have a scalar hyperparameter $w$ and take a linear combination: $\mathbf{v}_y - w \mathbf{v}_{\text{null}}$. That's going to be a vector that now points even more towards the conditional distribution than it does the data distribution.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_87742_00-48-44.733.jpg" width="75%" alt="Lecture Video at 00:48:44.733" /></p>
+
+The idea is that during sampling, we are now going to step according to this $\mathbf{v}_{\text{CFG}}$ vector rather than the raw vectors predicted by the model. Setting $w = 1$ recovers exactly the conditional prediction.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_88416_00-49-07.200.jpg" width="75%" alt="Lecture Video at 00:49:07.200" /></p>
+
+The higher your $w$ is, then the more you're overemphasizing the conditioning signal. This is pretty easy to implement. Your inference code doesn't really change too much, but now you evaluate the model twice at every iteration to get your $\mathbf{v}_y$ and your $\mathbf{v}_{\text{null}}$.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_88856_00-49-21.866.jpg" width="75%" alt="Lecture Video at 00:49:21.866" /></p>
+
+Then you take this linear combination and step according to that. And this is called classifier-free because of a stupid reason. There was an earlier paper called "classifier guidance" that I don't want to get into. They removed the classifier.
+
+Even though there was only nine months between those two papers, and it's now been four years since the second one, we're still stuck with the name classifier-free guidance.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_89380_00-49-39.333.jpg" width="75%" alt="Lecture Video at 00:49:39.333" /></p>
+
+So it is what it is. That's actually really important in practice for getting high quality outputs, and that's CFG.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_89592_00-49-46.400.jpg" width="75%" alt="Lecture Video at 00:49:46.400" /></p>
+
+It does double the cost of sampling though because now you need to hit the model twice on every iteration, which is a problem.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_89762_00-49-52.066.jpg" width="75%" alt="Lecture Video at 00:49:52.066" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_89822_00-49-54.066.jpg" width="75%" alt="Lecture Video at 00:49:54.066" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_89846_00-49-54.866.jpg" width="75%" alt="Lecture Video at 00:49:54.866" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_89860_00-49-55.333.jpg" width="75%" alt="Lecture Video at 00:49:55.333" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_89874_00-49-55.800.jpg" width="75%" alt="Lecture Video at 00:49:55.800" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_89890_00-49-56.333.jpg" width="75%" alt="Lecture Video at 00:49:56.333" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_89930_00-49-57.666.jpg" width="75%" alt="Lecture Video at 00:49:57.666" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_90080_00-50-02.666.jpg" width="75%" alt="Lecture Video at 00:50:02.666" /></p>
+
+One thing that we sometimes need to do is tweak this $t$ distribution. We saw in particular that we were sampling $t$ according to a uniform distribution in a raw rectified flow model.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_90568_00-50-18.933.jpg" width="75%" alt="Lecture Video at 00:50:18.933" /></p>
+
+The thing about that is that it is going to put uniform emphasis on all noise levels.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_90764_00-50-25.466.jpg" width="75%" alt="Lecture Video at 00:50:25.466" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_90808_00-50-26.933.jpg" width="75%" alt="Lecture Video at 00:50:26.933" /></p>
+
+Intuitively, when you're at full noise, the problem is very easy.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_91048_00-50-34.933.jpg" width="75%" alt="Lecture Video at 00:50:34.933" /></p>
+
+Then the optimal prediction from the model is basically to point towards the mean of the data distribution. Similarly, when you're at 0 noise, then the optimal prediction is actually to point towards the mean of the noise distribution. From the model at full noise and full data and no noise are actually very relatively easy problems.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_91598_00-50-53.266.jpg" width="75%" alt="Lecture Video at 00:50:53.266" /></p>
+
+It just needs to learn the mean of those two distributions.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_92458_00-51-21.933.jpg" width="75%" alt="Lecture Video at 00:51:21.933" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_92710_00-51-30.333.jpg" width="75%" alt="Lecture Video at 00:51:30.333" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_92724_00-51-30.800.jpg" width="75%" alt="Lecture Video at 00:51:30.800" /></p>
+
+So in practice you'll often sample from different noise schedules.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_92858_00-51-35.266.jpg" width="75%" alt="Lecture Video at 00:51:35.266" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_93128_00-51-44.266.jpg" width="75%" alt="Lecture Video at 00:51:44.266" /></p>
+
+And those are important as we scale to high resolution data. The intuition being that when you have a very high resolution image, then there can be very strong correlations across neighboring pixels. When you have a low resolution image, then the correlations across neighboring pixels tend to be smaller.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_94074_00-52-15.800.jpg" width="75%" alt="Lecture Video at 00:52:15.800" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_94088_00-52-16.266.jpg" width="75%" alt="Lecture Video at 00:52:16.266" /></p>
+
+These things don't naively scale to different resolutions. So that leads to actually—I said diffusion models are the most popular form of generative modeling.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_94628_00-52-34.266.jpg" width="75%" alt="Lecture Video at 00:52:34.266" /></p>
+
+That was a little bit of a lie, because what's actually most popular are these so-called latent diffusion models, which is a variant that actually gets used everywhere. Here it's going to be a multi-stage procedure. So what we're going to do is first train an encoder network and a decoder network. The encoder network is going to map from our image into some latent space, which I've colored in purple.
+
+And ideally that latent is going to spatially downsample the image by a factor of $D$, as well as convert from three channels up into $C$ channels.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_95398_00-52-59.933.jpg" width="75%" alt="Lecture Video at 00:52:59.933" /></p>
+
+A pretty common setting is to get 8 by 8 spatial downsampling and to increase to 16 channels. That's some of these most common encoder decoders. These encoder decoders tend to be CNNs with attention, but some more recent papers have explored ViTs for these.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_95864_00-53-15.466.jpg" width="75%" alt="Lecture Video at 00:53:15.466" /></p>
+
+Then what we do is we're going to train a diffusion model not on the raw pixel space of our images, but instead on the latent space, which is discovered by this encoder decoder model. And really importantly, you freeze the encoder so you do not propagate the gradients back into the encoder.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_96990_00-53-53.000.jpg" width="75%" alt="Lecture Video at 00:53:53.000" /></p>
+
+We're only using it to extract these latents and then training a diffusion model directly on the latent space, which is learned by the encoder.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_97052_00-53-55.066.jpg" width="75%" alt="Lecture Video at 00:53:55.066" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_97100_00-53-56.666.jpg" width="75%" alt="Lecture Video at 00:53:56.666" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_97330_00-54-04.333.jpg" width="75%" alt="Lecture Video at 00:54:04.333" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_97474_00-54-09.133.jpg" width="75%" alt="Lecture Video at 00:54:09.133" /></p>
+
+So then we need to run the decoder to convert that clean latent into a clean image. And this is actually the most common form of most diffusion models these days. So you might be asking: "Okay, we've got this diffusion model, this encoder-decoder.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_97758_00-54-18.600.jpg" width="75%" alt="Lecture Video at 00:54:18.600" /></p>
+
+How do we train an encoder-decoder? Any ideas?
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_97954_00-54-25.133.jpg" width="75%" alt="Lecture Video at 00:54:25.133" /></p>
+
+Have we seen encoder-decoders? How about a variational autoencoder?" In practice whenever you're training these latent diffusion models, this encoder-decoder tends to be a Variational Autoencoder (VAE). But we just said there was a big problem with Variational Autoencoders is that they give you blurry outputs.
+
+So if your encoder-decoder is giving you blurry, ugly reconstructions, that's not going to fly. That's not going to get us good clean samples. So anyone have an idea for cleaning up the sample quality of a VAE? But something after the decoder in particular, we can make it a GAN.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_99248_00-55-08.266.jpg" width="75%" alt="Lecture Video at 00:55:08.266" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_99662_00-55-22.066.jpg" width="75%" alt="Lecture Video at 00:55:22.066" /></p>
+
+So this is basically why we have to walk through all of these different formulations of generative models in order for you to understand the modern pipeline. Basically the state of the art in generative modeling is: Is it a VAE? Is it a GAN? Is it a diffusion?
+
+It's all of them. It's all of them. The modern generative modeling pipeline involves training a VAE and a GAN and a diffusion model. It's a mess.
+
+You might ask what the neural networks actually look like under the hood here?
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_100582_00-55-52.733.jpg" width="75%" alt="Lecture Video at 00:55:52.733" /></p>
+
+Thankfully, there has been some sanity in the last couple of years. It turns out that relatively straightforward transformers can be applied to these diffusion models, and they work really well. The main question you need to solve on the architectural side is how do you inject the conditioning information? In particular, the diffusion model now needs to take three things as input.
+
+It needs to take your noisy image; it needs to take your timestamp $t$.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_101748_00-56-31.600.jpg" width="75%" alt="Lecture Video at 00:56:31.600" /></p>
+
+It also needs to take your conditioning signal, which might be your text or something like that. There are a couple of different mechanisms for injecting that conditioning signal into your transformer blocks. The first is to predict a scale and shift that are going to be used to modulate some of the intermediate activations of your diffusion block.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_102280_00-56-49.333.jpg" width="75%" alt="Lecture Video at 00:56:49.333" /></p>
+
+That's typically the way that we inject the timestamp information into diffusion models. Another thing you can do is transformers are just models of sequences, so you can jam everything into the sequence. You can jam the timestamp into the sequence; you can jam your text into the sequence. You can jam whatever you want into the sequence and have the transformer model that sequence of data all together.
+
+You can do that either via cross-attention or joint attention, and different models do both. Typically in modern diffusion DiTs, we inject the timestamp through this scale shift mechanism. And you inject the text or other conditioning signal through sequence concatenation, usually cross-attention, but sometimes joint attention as well.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_103382_00-57-26.066.jpg" width="75%" alt="Lecture Video at 00:57:26.066" /></p>
+
+How can you actually apply this to different problems?
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_105180_00-58-26.000.jpg" width="75%" alt="Lecture Video at 00:58:26.000" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_105922_00-58-50.733.jpg" width="75%" alt="Lecture Video at 00:58:50.733" /></p>
+
+One task that people care about a lot is text-to-image generation. Here, we're going to input a text prompt. This is one that I wrote yesterday: A professional documentary photograph of a monkey shaking hands with a tiger in front of the Eiffel Tower. The monkey is wearing a hat made out of bananas.
+
+The tiger is standing on two legs and wearing a suit, and this is a real sample. The way that this works is you'll take your text prompt, pass it through usually a pre-trained text encoder. I actually lied; there are more models you have to train. You'll typically pick up a pre-trained text encoder, usually T5 or CLIP, something like that, to give text embeddings.
+
+Usually the text encoder will be frozen. This thing goes iteratively, and that'll go through your VAE decoder to give you your final image. To put some numbers on this to make it concrete, a pretty powerful open-source model right now is called FLUX1 dev. They use the T5 and CLIP encoders.
+
+Their encoder uses 8x downsampling. They train a 12 billion parameter transformer model on this, and that transformer has an additional layer of downsampling on top of the VAE, which is kind of messy. It ends up having a sequence length of 1,024 image tokens. Another task that people care about a lot is text-to-video.
+
+We can input a text prompt and then output the pixels of a video that follow that text prompt. The pipeline basically looks the same: you're going to input a text through your pre-trained text encoder and get noisy latents. Importantly, the only difference is that your latents now have an extra dimension to accommodate time. In addition to two spatial dimensions $h$ and $w$, you'll also have a time dimension in your latent, and that will give you clean latents.
+
+Your decoder—this is typically going to be a spatio-temporal autoencoder now—will downsample both spatially and temporally. Then it will take your latents and upsample them into pixels, which will give you a video. This was actually a generated video from Meta's GOOVIGEN paper that came out last year. The key takeaway of these video generation models is that they get very expensive to train due to the sequence length.
+
+If you want to generate high FPS, high resolution, high frame rate video, it just ends up with a lot of tokens. We said that with a fairly state-of-the-art text-to-image diffusion model, that transformer ended up working on a sequence of 1,024 image tokens. They actually need to process 76,000 video tokens to create this high-resolution video with a lot of frames.
+
+That's where the expense happens in these video diffusion models: processing these really long sequences.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_108782_01-00-26.066.jpg" width="75%" alt="Lecture Video at 01:00:26.066" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_108800_01-00-26.666.jpg" width="75%" alt="Lecture Video at 01:00:26.666" /></p>
+
+Basically, the last year has been pretty much the era of video diffusion models. It seems like every week almost for the past year there has been a new interesting video diffusion model coming out. But they'll take your credit card number and let you generate samples from it. So I'm not going to go through all of these one by one, but I just wanted to give the sense that this has been a really hot topic over the past 18 months.
+
+They adopted this modern diffusion transformer plus rectified flow. That was the four minute mile moment in video diffusion models. Then all the other big companies took notice of that and quickly tried to replicate Sora. It felt like for the past year and a half that almost every week, there's been a brand new, state-of-the-art video diffusion model.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_111176_01-01-45.866.jpg" width="75%" alt="Lecture Video at 01:01:45.866" /></p>
+
+And today is no exception because an hour and a half—at 11:00 AM this morning, Google announced Veo 3, which is almost certainly the best generative model of video out there right now. I literally read the blog post while I was in the car on the way here, but it seems cool. Here are some samples from V3. These are actually generated videos from a text prompt in Google's new model, kind of crazy.
+
+Also, this model also models sound jointly so they can output audio along with the video frames. This is another generated one, so you can tell what you want to happen in text. It'll fly over here and looks crazy. So, I thought that's just fun to incorporate new stuff.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_112490_01-02-29.666.jpg" width="75%" alt="Lecture Video at 01:02:29.666" /></p>
+
+One big problem with diffusion is that during sampling it's really slow. We said that sampling was this iterative procedure, and these models can be really big. These can be models with tens of billions of parameters potentially operating on sequence lengths of tens of thousands or more. So these things get really slow at inference time because even with rectified flow, you need like tens of iterations of the model at inference time.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_113226_01-02-54.200.jpg" width="75%" alt="Lecture Video at 01:02:54.200" /></p>
+
+The solution is a category of algorithms called distillation, which we don't have time to get into. I just wanted to put a couple of references here, make you aware that this exists as a set of techniques. They tend to sacrifice sample quality. The whole trick in distillation methods is trying to maintain the sample quality as good as you can while still letting you take fewer steps at inference time.
+
+And some distillation methods let you get all the way down to single-step sampling, which is really cool, although they tend to take quite a hit on the generation quality when you do that. I'm not going through these, but I just put some references here to different papers on distillation if you want to take a look. This is a really active and evolving area of research.
+
+If you look at these references, these are from 2024, from 2025. These are stuff that people are working on right now: how do we get better distillation? How do we get diffusion models to be more efficient at inference time?
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_115258_01-04-01.933.jpg" width="75%" alt="Lecture Video at 01:04:01.933" /></p>
+
+Another thing: I mentioned that diffusion has this black hole of math that you can get sucked into. So I wanted to give you just a brief sense of what some of these formalisms are, but we're not going to be able to go through them in detail. Here's restating the rectified flow objective. We said that during training, we're going to sample our $x$'s and our $z$'s according to our data distribution and our noise distribution.
+
+We're going to sample $t$ according to some distribution $p_t$ that we choose, either on uniform, log-normal, or shifted, something like that. And then we'll set $x_t$ equal to the linear interpolation between $x$ and $z$.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_117332_01-05-11.066.jpg" width="75%" alt="Lecture Video at 01:05:11.066" /></p>
+
+In more generalized flavors of diffusion, usually you might vary what is this $p_t$ distribution. Usually, you don't vary the noise distribution; this is almost always Gaussian, at least for continuous models. But what you will vary is how do you compute that noisy $x_t$. And in general, that will be some functional combination—that will be some linear combination of $x$ and $z$.
+
+The linear combination weights will in general be some function of $t$, but what exactly that function is depends on the diffusion formulation. Then what also varies is what is that ground truth target that we ask the model to predict. It is always going to be some linear combination of our data sample $x$ and our latent $z$. The linear combination weights might be functions of $t$ in some formulations.
+
+We are going to ask the model to give it that noisy $x_t$ and the $t$, get a predicted $y$. We then always compute an $\text{L}_2$ loss between the two, or usually do.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_119432_01-06-21.066.jpg" width="75%" alt="Lecture Video at 01:06:21.066" /></p>
+
+In the case of rectified flow, it is fairly simple; these all take really simple forms.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_119698_01-06-29.933.jpg" width="75%" alt="Lecture Video at 01:06:29.933" /></p>
+
+$c_t$ and $d_t$ are actually just constants. There is another flavor called variance preserving, where you collapse these two into one scalar hyperparameter called $\sigma_t$. You have linear combinations in a particular way, chosen because if $x$ and $z$ are independent and have unit variance, then your output also is guaranteed to have unit variance.
+
+This collapses the two functional hyperparameters into just one noise schedule that still needs to be chosen somehow. In combination with variance preserving, there is also variance exploding, another one where you set $\alpha_t = 1$, $b_t$ equal to again some $\sigma_t$.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_120486_01-06-56.200.jpg" width="75%" alt="Lecture Video at 01:06:56.200" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_120790_01-07-06.333.jpg" width="75%" alt="Lecture Video at 01:07:06.333" /></p>
+
+You then need to choose that somehow. There are a lot of different targets that people will choose.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_121582_01-07-32.733.jpg" width="75%" alt="Lecture Video at 01:07:32.733" /></p>
+
+Choosing hyperparameters is bad enough; now we need to choose hyperparameters which are themselves functions of $t$. This is crazy. You are never going to set these intuitively, so you have to be guided by some kind of math. There are basically three different mathematical formalisms that people think about when training diffusion models, which we will not walk through in practice.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_122208_01-07-53.600.jpg" width="75%" alt="Lecture Video at 01:07:53.600" /></p>
+
+The first is that diffusion is a latent variable model. We can't observe them; we don't know what they are, but we need to figure them out somehow. That is a latent variable model. That ends up looking a lot like a variational autoencoder.
+
+Remember, in a variational autoencoder we had a $z$ and an $x$. We didn't observe the $z$, and we wanted to train this thing somehow.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_123428_01-08-34.266.jpg" width="75%" alt="Lecture Video at 01:08:34.266" /></p>
+
+A totally different interpretation is that it models something called the score function. Given a distribution $\text{p}_{\text{data}}$ of $x$, there is a nice thing called the score function, which is the derivative with respect to $x$ of the log of $\text{p}_{\text{data}}(x)$. Intuitively, given a distribution, the score function is a vector field that points towards areas of high probability density.
+
+For any point in the data space, the score function is going to be a vector that points you towards areas of high data density.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_125306_01-09-36.866.jpg" width="75%" alt="Lecture Video at 01:09:36.866" /></p>
+
+This is a totally different mathematical formalism that gives rise to very similar looking algorithms at the end. The third one that came onto the scene a little bit more recently is this notion of diffusion as solving stochastic differential equations. During inference, the neural network is basically learning some kind of numeric integrator to this stochastic differential equation that we can write down.
+
+Under this interpretation, you can imagine doing all kinds of more complicated integrators to maybe do a better job at marching along this score function. Again, these are deep waters.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_127424_01-10-47.466.jpg" width="75%" alt="Lecture Video at 01:10:47.466" /></p>
+
+There are papers that go into great detail on all these things. A blog post that is liked is one by Sander Dielman on perspectives on diffusion, which gave eight different perspectives. on different ways to think about or view diffusion models.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_127922_01-11-04.066.jpg" width="75%" alt="Lecture Video at 01:11:04.066" /></p>
+
+This is an excellent post; I would highly recommend—I would actually highly recommend everything he's written about diffusion models. All his blog posts are amazing.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_128028_01-11-07.600.jpg" width="75%" alt="Lecture Video at 01:11:07.600" /></p>
+
+Autoregressive models also come back. We can do the same thing: encoder-decoder and put an autoregressive model on there too. That's why, for generative models, we saw GANs, VAEs, autoregressive models, and diffusion because it turns out they all get used in modern machine learning pipelines.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_128952_01-11-38.400.jpg" width="75%" alt="Lecture Video at 01:11:38.400" /></p>
+
+So that's basically the summary of today. Today we did a whirlwind tour of two different categories of generative models: we talked about Generative Adversarial Networks as well as diffusion models.
+
+
+
+<p align="center"><img src="./lecture_14_slides/slide_129598_01-11-59.933.jpg" width="75%" alt="Lecture Video at 01:11:59.933" /></p>
+
+<p align="center"><img src="./lecture_14_slides/slide_129704_01-12-03.466.jpg" width="75%" alt="Lecture Video at 01:12:03.466" /></p>
+
+Thank you, and next time, we'll talk about vision and language.
+
+
+
