@@ -27,10 +27,9 @@ The complete 18-lecture study notes for **Stanford CS231N (Spring 2025)** genera
 
 ## 📥 Download Compiled PDFs (Releases)
 
-Pre-compiled, publication-quality 14pt PDFs with high-resolution slide captures are available on the **[GitHub Releases Page](https://github.com/yellowlab9/cs231n-lecture-notes-generator/releases)**:
+Pre-compiled, publication-quality 14pt PDFs with high-resolution slide captures are available on the **[Course Releases Page](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/releases)**:
 
-- 📄 **[Release v2.0.0: Complete Course (Lectures 1 to 18)](https://github.com/yellowlab9/cs231n-lecture-notes-generator/releases/tag/v2.0.0)** *(Full 18-lecture bundle)*
-- 📄 **[Release v1.0.0: Part 1 Foundations (Lectures 1 to 6)](https://github.com/yellowlab9/cs231n-lecture-notes-generator/releases/tag/v1.0.0)**
+- 📄 **[Release v2.0.0: Complete Course (Lectures 1 to 18)](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/releases/tag/v2.0.0)** *(Full 18-lecture bundle)*
 
 ---
 
