@@ -64,7 +64,9 @@ def compile_lecture_pdf(lecture, engine="xelatex", fontsize=None):
     patterns = [
         os.path.join("**", "lectures", f"lecture_{lec_num}*.md"),
         os.path.join("lectures", f"lecture_{lec_num}*.md"),
+        os.path.join("docs", "lectures", f"lecture_{lec_num}*.md"),
         os.path.join("..", "*", "lectures", f"lecture_{lec_num}*.md"),
+        os.path.join("..", "*", "docs", "lectures", f"lecture_{lec_num}*.md"),
     ]
 
     md_matches = []
@@ -78,7 +80,13 @@ def compile_lecture_pdf(lecture, engine="xelatex", fontsize=None):
 
     md_path = os.path.abspath(md_matches[0])
     lec_dir = os.path.dirname(md_path)
-    course_dir = os.path.dirname(lec_dir) if os.path.basename(lec_dir) == "lectures" else "."
+    parent_of_lec = os.path.dirname(lec_dir)
+    if os.path.basename(parent_of_lec) == "docs":
+        course_dir = os.path.dirname(parent_of_lec)
+    elif os.path.basename(lec_dir) == "lectures":
+        course_dir = parent_of_lec
+    else:
+        course_dir = "."
     pdf_dir = os.path.join(course_dir, "lectures_pdf") if course_dir != "." else "lectures_pdf"
     base_name = os.path.splitext(os.path.basename(md_path))[0]
     pdf_path = os.path.join(pdf_dir, f"{base_name}.pdf")
@@ -92,7 +100,9 @@ def compile_all_lectures(force=False, engine="xelatex", fontsize=None):
     patterns = [
         os.path.join("**", "lectures", "lecture_*_notes_*.md"),
         os.path.join("lectures", "lecture_*_notes_*.md"),
+        os.path.join("docs", "lectures", "lecture_*_notes_*.md"),
         os.path.join("..", "*", "lectures", "lecture_*_notes_*.md"),
+        os.path.join("..", "*", "docs", "lectures", "lecture_*_notes_*.md"),
     ]
     md_matches = []
     for pat in patterns:
@@ -113,7 +123,13 @@ def compile_all_lectures(force=False, engine="xelatex", fontsize=None):
 
     for md_path in unique_mds:
         lec_dir = os.path.dirname(md_path)
-        course_dir = os.path.dirname(lec_dir) if os.path.basename(lec_dir) == "lectures" else "."
+        parent_of_lec = os.path.dirname(lec_dir)
+        if os.path.basename(parent_of_lec) == "docs":
+            course_dir = os.path.dirname(parent_of_lec)
+        elif os.path.basename(lec_dir) == "lectures":
+            course_dir = parent_of_lec
+        else:
+            course_dir = "."
         pdf_dir = os.path.join(course_dir, "lectures_pdf") if course_dir != "." else "lectures_pdf"
         base_name = os.path.splitext(os.path.basename(md_path))[0]
         pdf_path = os.path.join(pdf_dir, f"{base_name}.pdf")
