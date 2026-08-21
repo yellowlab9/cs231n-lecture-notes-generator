@@ -34,55 +34,53 @@ Pre-compiled, publication-quality 14pt PDFs with high-resolution slide captures 
 
 ---
 
-## 📚 Course Curriculum & Study Guides
+## 📚 Course Curriculum & Study Guides (Stanford CS231N 2025)
 
-| Lecture | Topic | Study Note (`.md`) | Interactive Notebook (`.ipynb`) |
-| :--- | :--- | :--- | :--- |
-| **01** | Introduction to Deep Learning for Computer Vision | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_01_notes_introduction.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_01_notes_introduction.ipynb) |
-| **02** | Image Classification with Linear Classifiers | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_02_notes_image_classification_with_linear_classifiers.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_02_notes_image_classification_with_linear_classifiers.ipynb) |
-| **03** | Regularization and Optimization | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_03_notes_regularization_and_optimization.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_03_notes_regularization_and_optimization.ipynb) |
-| **04** | Neural Networks and Backpropagation | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_04_notes_neural_networks_and_backpropagation.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_04_notes_neural_networks_and_backpropagation.ipynb) |
-| **05** | Image Classification with CNNs | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_05_notes_image_classification_with_cnns.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_05_notes_image_classification_with_cnns.ipynb) |
-| **06** | CNN Architectures | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_06_notes_cnn_architectures.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_06_notes_cnn_architectures.ipynb) |
-| **07** | Recurrent Neural Networks (RNNs) | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_07_notes_recurrent_neural_networks.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_07_notes_recurrent_neural_networks.ipynb) |
-| **08** | Attention and Transformers | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_08_notes_attention_and_transformers.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_08_notes_attention_and_transformers.ipynb) |
-| **09** | Object Detection, Image Segmentation & Visualizing | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_09_notes_object_detection_image_segmentation_visualizing.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_09_notes_object_detection_image_segmentation_visualizing.ipynb) |
-| **10** | Video Understanding | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_10_notes_video_understanding.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_10_notes_video_understanding.ipynb) |
-| **11** | Large-Scale Distributed Training | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_11_notes_large_scale_distributed_training.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_11_notes_large_scale_distributed_training.ipynb) |
-| **12** | Self-Supervised Learning | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_12_notes_self_supervised_learning.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_12_notes_self_supervised_learning.ipynb) |
-| **13** | Generative Models (Part 1) | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_13_notes_generative_models_1.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_13_notes_generative_models_1.ipynb) |
-| **14** | Generative Models (Part 2) | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_14_notes_generative_models_2.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_14_notes_generative_models_2.ipynb) |
-| **15** | 3D Vision | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_15_notes_3d_vision.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_15_notes_3d_vision.ipynb) |
-| **16** | Vision and Language | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_16_notes_vision_and_language.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_16_notes_vision_and_language.ipynb) |
-| **17** | Robot Learning | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_17_notes_robot_learning.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_17_notes_robot_learning.ipynb) |
-| **18** | Human-Centered AI | [Notes](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_18_notes_human_centered_ai.md) | [Notebook](Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/lectures/lecture_18_notes_human_centered_ai.ipynb) |
+The complete notes, notebooks, and slide images generated with this pipeline are hosted in the dedicated [lecture-notes-stanford-cs231n-2025](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025) repository:
+
+| Lecture | Topic | Study Note (`.md`) | Interactive Notebook (`.ipynb`) | Download PDF |
+| :---: | :--- | :---: | :---: | :---: |
+| **01** | Introduction to Deep Learning for Computer Vision | [Notes](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_01_notes_introduction.md) | [Notebook](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_01_notes_introduction.ipynb) | [PDF](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/releases/download/v2.0.0/lecture_01_notes_introduction.pdf) |
+| **02** | Image Classification with Linear Classifiers | [Notes](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_02_notes_image_classification_with_linear_classifiers.md) | [Notebook](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_02_notes_image_classification_with_linear_classifiers.ipynb) | [PDF](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/releases/download/v2.0.0/lecture_02_notes_image_classification_with_linear_classifiers.pdf) |
+| **03** | Regularization and Optimization | [Notes](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_03_notes_regularization_and_optimization.md) | [Notebook](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_03_notes_regularization_and_optimization.ipynb) | [PDF](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/releases/download/v2.0.0/lecture_03_notes_regularization_and_optimization.pdf) |
+| **04** | Neural Networks and Backpropagation | [Notes](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_04_notes_neural_networks_and_backpropagation.md) | [Notebook](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_04_notes_neural_networks_and_backpropagation.ipynb) | [PDF](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/releases/download/v2.0.0/lecture_04_notes_neural_networks_and_backpropagation.pdf) |
+| **05** | Image Classification with CNNs | [Notes](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_05_notes_image_classification_with_cnns.md) | [Notebook](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_05_notes_image_classification_with_cnns.ipynb) | [PDF](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/releases/download/v2.0.0/lecture_05_notes_image_classification_with_cnns.pdf) |
+| **06** | CNN Architectures | [Notes](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_06_notes_cnn_architectures.md) | [Notebook](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_06_notes_cnn_architectures.ipynb) | [PDF](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/releases/download/v2.0.0/lecture_06_notes_cnn_architectures.pdf) |
+| **07** | Recurrent Neural Networks (RNNs) | [Notes](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_07_notes_recurrent_neural_networks.md) | [Notebook](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_07_notes_recurrent_neural_networks.ipynb) | [PDF](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/releases/download/v2.0.0/lecture_07_notes_recurrent_neural_networks.pdf) |
+| **08** | Attention and Transformers | [Notes](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_08_notes_attention_and_transformers.md) | [Notebook](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_08_notes_attention_and_transformers.ipynb) | [PDF](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/releases/download/v2.0.0/lecture_08_notes_attention_and_transformers.pdf) |
+| **09** | Object Detection, Image Segmentation & Visualizing | [Notes](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_09_notes_object_detection_image_segmentation_visualizing.md) | [Notebook](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_09_notes_object_detection_image_segmentation_visualizing.ipynb) | [PDF](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/releases/download/v2.0.0/lecture_09_notes_object_detection_image_segmentation_visualizing.pdf) |
+| **10** | Video Understanding | [Notes](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_10_notes_video_understanding.md) | [Notebook](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_10_notes_video_understanding.ipynb) | [PDF](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/releases/download/v2.0.0/lecture_10_notes_video_understanding.pdf) |
+| **11** | Large-Scale Distributed Training | [Notes](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_11_notes_large_scale_distributed_training.md) | [Notebook](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_11_notes_large_scale_distributed_training.ipynb) | [PDF](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/releases/download/v2.0.0/lecture_11_notes_large_scale_distributed_training.pdf) |
+| **12** | Self-Supervised Learning | [Notes](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_12_notes_self_supervised_learning.md) | [Notebook](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_12_notes_self_supervised_learning.ipynb) | [PDF](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/releases/download/v2.0.0/lecture_12_notes_self_supervised_learning.pdf) |
+| **13** | Generative Models (Part 1) | [Notes](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_13_notes_generative_models_1.md) | [Notebook](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_13_notes_generative_models_1.ipynb) | [PDF](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/releases/download/v2.0.0/lecture_13_notes_generative_models_1.pdf) |
+| **14** | Generative Models (Part 2) | [Notes](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_14_notes_generative_models_2.md) | [Notebook](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_14_notes_generative_models_2.ipynb) | [PDF](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/releases/download/v2.0.0/lecture_14_notes_generative_models_2.pdf) |
+| **15** | 3D Vision | [Notes](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_15_notes_3d_vision.md) | [Notebook](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_15_notes_3d_vision.ipynb) | [PDF](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/releases/download/v2.0.0/lecture_15_notes_3d_vision.pdf) |
+| **16** | Vision and Language | [Notes](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_16_notes_vision_and_language.md) | [Notebook](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_16_notes_vision_and_language.ipynb) | [PDF](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/releases/download/v2.0.0/lecture_16_notes_vision_and_language.pdf) |
+| **17** | Robot Learning | [Notes](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_17_notes_robot_learning.md) | [Notebook](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_17_notes_robot_learning.ipynb) | [PDF](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/releases/download/v2.0.0/lecture_17_notes_robot_learning.pdf) |
+| **18** | Human-Centered AI | [Notes](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_18_notes_human_centered_ai.md) | [Notebook](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/lectures/lecture_18_notes_human_centered_ai.ipynb) | [PDF](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/releases/download/v2.0.0/lecture_18_notes_human_centered_ai.pdf) |
 
 ---
 
-## Directory Structure
+## 📂 Decoupled Directory Architecture
 
-Generated course assets follow a clean, flattened layout:
+The system cleanly separates the **reusable Python generator engine** from each **course notes & website repository**:
 
-```bash
-Stanford_CS231N_Deep_Learning_for_Computer_Vision_I_2025/
-├── lectures/
-│   ├── lecture_01_notes_introduction.md
-│   ├── lecture_01_notes_introduction.ipynb    <-- Paired Jupyter Notebook
-│   ├── lecture_01_slides/                     <-- Extracted Slide Images
-│   │   ├── slide_4_00-00-00.133.jpg
-│   │   └── ...
-│   ├── lecture_02_notes_image_classification_with_linear_classifiers.md
-│   ├── lecture_02_notes_image_classification_with_linear_classifiers.ipynb
-│   └── lecture_02_slides/
+```text
+Z:\auyeung\ml2026\
 │
-├── lectures_pdf/                              <-- Compiled XeLaTeX PDFs (14pt)
-│   ├── lecture_01_notes_introduction.pdf
-│   └── lecture_02_notes_image_classification_with_linear_classifiers.pdf
+├── cs231n-lecture-notes-generator/        <-- [THIS REPOSITORY: Python Generator Engine]
+│   ├── study_notes_generator/             <-- Core Python package (CV, LLM, PDF modules)
+│   ├── generate_notes.py                  <-- Entrypoint CLI
+│   ├── Makefile                           <-- Automated commands with COURSE_DIR support
+│   ├── requirements.txt                   <-- Python dependencies
+│   └── README.md
 │
-└── lectures_cache/                            <-- Intermediate Cache
-    ├── media/
-    ├── slide_csv/
-    └── logs/
+└── lecture-notes-stanford-cs231n-2025/    <-- [COURSE NOTES REPOSITORY & WEBSITE]
+    ├── mkdocs.yml                         <-- Material website navigation & MathJax config
+    ├── README.md                          <-- Public course index, syllabus & disclaimer
+    ├── lectures/                          <-- [TRACKED] 18 .md notes, .ipynb notebooks & slides
+    ├── lectures_pdf/                      <-- [LOCAL ONLY] 18 compiled 14pt PDFs
+    └── lectures_cache/                    <-- [LOCAL ONLY] Video downloads & logs
 ```
 
 ---
