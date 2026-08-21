@@ -65,7 +65,7 @@ release:
 	@echo "=========================================================="
 	@echo "Publishing GitHub Release $(TAG) with compiled PDFs"
 	@echo "=========================================================="
-	@"$(PYTHON)" -c "import glob, subprocess; pdfs = sorted(glob.glob('**/lectures_pdf/lecture_*_notes_*.pdf', recursive=True)); cmd = ['gh', 'release', 'create', '$(TAG)'] + pdfs + ['--title', '$(TITLE)', '--notes', 'High-fidelity lecture study guides (14pt XeLaTeX PDFs) with slide captures.', '--verify-tag']; subprocess.run(cmd)"
+	@"$(PYTHON)" -c "import glob, subprocess; pdfs = sorted(glob.glob('**/lectures_pdf/lecture_*_notes_*.pdf', recursive=True)); cmd = ['gh', 'release', 'create', '$(TAG)'] + pdfs + ['-R', 'yellowlab9/cs231n-lecture-notes-generator', '--title', '$(TITLE)', '--notes', 'High-fidelity lecture study guides (14pt XeLaTeX PDFs) with slide captures.', '--verify-tag']; subprocess.run(cmd)"
 
 # Clean up local environment
 clean:
