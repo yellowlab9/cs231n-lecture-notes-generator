@@ -64,6 +64,7 @@ def compile_lecture_pdf(lecture, engine="xelatex", fontsize=None):
     patterns = [
         os.path.join("**", "lectures", f"lecture_{lec_num}*.md"),
         os.path.join("lectures", f"lecture_{lec_num}*.md"),
+        os.path.join("..", "*", "lectures", f"lecture_{lec_num}*.md"),
     ]
 
     md_matches = []
@@ -91,6 +92,7 @@ def compile_all_lectures(force=False, engine="xelatex", fontsize=None):
     patterns = [
         os.path.join("**", "lectures", "lecture_*_notes_*.md"),
         os.path.join("lectures", "lecture_*_notes_*.md"),
+        os.path.join("..", "*", "lectures", "lecture_*_notes_*.md"),
     ]
     md_matches = []
     for pat in patterns:

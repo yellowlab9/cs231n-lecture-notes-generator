@@ -1,7 +1,8 @@
 # Default variables (Override these from the command line)
-LECTURE ?= 3
+LECTURE ?= 1
 INDEX ?= $(LECTURE)
 PLAYLIST_URL ?= https://www.youtube.com/playlist?list=PLoROMvodv4rOmsNzYBMe0gJY2XS8AQg16
+COURSE_DIR ?= ../lecture-notes-stanford-cs231n-2025
 MODEL ?= gemma4:latest
 
 # Toggles for logging and visual monitor
@@ -13,24 +14,26 @@ IMG_WIDTH ?= 75%
 FONT_SIZE ?= 14pt
 PDF_ENGINE ?= xelatex
 PREFIX_FLAG ?= $(if $(OUTPUT_PREFIX),--output_prefix $(OUTPUT_PREFIX),)
+COURSE_FLAG ?= $(if $(COURSE_DIR),--playlist_dir "$(COURSE_DIR)",)
 
 # Phony targets
 .PHONY: notes pdf pdf-all ipynb sync release clean clean_slides clean_cache clean_pdf debug-args vscode-launch
 
 PYTHON ?= python
-TAG ?= v1.0.0
+TAG ?= v2.0.0
 TITLE ?= Stanford CS231N Study Notes ($(TAG))
 
 # Default target
 notes:
 	@echo "=========================================================="
 	@echo "Generating Notes for Lecture $(LECTURE) (Index $(INDEX))"
+	@echo "Course Directory: $(COURSE_DIR)"
 	@echo "Playlist URL: $(PLAYLIST_URL)"
 	@echo "Model: $(MODEL)"
 	@echo "Image Width: $(IMG_WIDTH)"
 	@echo "Font Size: $(FONT_SIZE)"
 	@echo "=========================================================="
-	"$(PYTHON)" generate_notes.py --video_list_url "$(PLAYLIST_URL)" --index $(INDEX) $(PREFIX_FLAG) --model $(MODEL) --img_width $(IMG_WIDTH) --fontsize $(FONT_SIZE) $(VERBOSE_FLAG) $(DISPLAY_FLAG) $(DEBUG_FLAG)
+	"$(PYTHON)" generate_notes.py --video_list_url "$(PLAYLIST_URL)" --index $(INDEX) $(COURSE_FLAG) $(PREFIX_FLAG) --model $(MODEL) --img_width $(IMG_WIDTH) --fontsize $(FONT_SIZE) $(VERBOSE_FLAG) $(DISPLAY_FLAG) $(DEBUG_FLAG)
 
 # Convert a single Markdown study guide to PDF via Pandoc
 pdf:

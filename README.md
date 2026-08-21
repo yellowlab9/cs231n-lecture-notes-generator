@@ -1,18 +1,27 @@
 # Study Notes Generator 🎓
 
-An automated, end-to-end pipeline that converts video lecture playlists (YouTube) into high-fidelity Markdown study notes, paired interactive Jupyter Notebooks (.ipynb), and publication-quality XeLaTeX PDFs. 
+An automated, reusable Python pipeline that transforms YouTube video lecture playlists into high-fidelity Markdown study notes, paired interactive Jupyter Notebooks (`.ipynb`), and publication-quality XeLaTeX PDFs using local Ollama LLMs and computer vision slide extraction.
 
-This generator is applicable to lecture video with talking heads interleved with lecture slides. Example videos include the lectures of Stanford CS231N Deep Learning for Computer Vision I 2025, with playlist url: https://www.youtube.com/playlist?list=PLoROMvodv4rOmsNzYBMe0gJY2XS8AQg16. 
+---
+
+## 🌟 Featured Course Showcase
+
+The complete 18-lecture study notes for **Stanford CS231N (Spring 2025)** generated with this tool are live at:
+
+- 📖 **Interactive Online Textbook:** 👉 **[https://yellowlab9.github.io/lecture-notes-stanford-cs231n-2025/](https://yellowlab9.github.io/lecture-notes-stanford-cs231n-2025/)**
+- 📂 **Course Notes Repository:** 👉 **[https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025)**
+- 📥 **Download All 18 14pt PDFs:** 👉 **[Release v2.0.0 Bundle](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/releases/tag/v2.0.0)**
 
 ---
 
 ## Key Features
 
 - **🎥 High-Fidelity Slide Detection and Extraction:** Decodes frames via PyAV and detects slide transitions using OpenCV and Kernel Density Estimation (KDE) mode-image extraction.
-- **🤖 Minimal-Difference LLM Formatting:** Cleans raw speech into clear paragraphs and standard LaTeX mathematical formulas using local Ollama LLMs (e.g. gemma4:latest, qwen2.5) while strictly preserving verbatim explanations and examples.
-- **📓 Two-Way Jupytext Pairing (.md $\leftrightarrow$ .ipynb):** Encapsulates each slide and its corresponding explanation into explicit cell regions (<!-- #region -->), allowing seamless two-way editing in MarkText, Obsidian, VS Code, or JupyterLab.
-- **📄 Publication-Quality PDFs:** Converts Markdown notes directly to XeLaTeX PDFs using Pandoc with native LaTeX captions, non-floating [H] figures, and configurable font sizes (14pt default via extarticle for viewing on screen). If you need to print it out, you can change the font size to 12pt.
+- **🤖 Minimal-Difference LLM Formatting:** Cleans raw speech into clear paragraphs and standard LaTeX mathematical formulas using local Ollama LLMs (e.g. `gemma4:latest`, `qwen2.5`) while strictly preserving verbatim explanations and examples.
+- **📓 Two-Way Jupytext Pairing (`.md` $\leftrightarrow$ `.ipynb`):** Encapsulates each slide and its corresponding explanation into explicit cell regions (`<!-- #region -->`), allowing seamless two-way editing in MarkText, Obsidian, VS Code, or JupyterLab.
+- **📄 Publication-Quality PDFs:** Converts Markdown notes directly to XeLaTeX PDFs using Pandoc with native LaTeX captions, non-floating `[H]` figures, and configurable font sizes (14pt default via `extarticle`).
 - **⚡ Self-Recovering Cache:** Skips repeated video downloads and slide extraction when cached assets exist.
+- **🌐 Decoupled Architecture:** Output notes and slide images are directed cleanly into dedicated course repositories with zero code clutter.
 
 ---
 
