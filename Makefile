@@ -54,21 +54,21 @@ ipynb:
 	@echo "=========================================================="
 	@echo "Pairing / Converting Lecture $(LECTURE) to Jupyter Notebook (.ipynb)"
 	@echo "=========================================================="
-	@"$(PYTHON)" -c "import glob, subprocess, sys; lec = '$(LECTURE)'.replace('lecture_', ''); num = f'{int(lec):02d}' if lec.isdigit() else lec; matches = glob.glob(f'**/lectures/lecture_{num}_notes_*.md', recursive=True); sys.exit(subprocess.run(['$(PYTHON)', '-m', 'jupytext', '--to', 'ipynb', matches[0]]).returncode) if matches else print(f'No notes found for lecture {lec}')"
+	@"$(PYTHON)" -c "import glob, subprocess, sys, os; lec = '$(LECTURE)'.replace('lecture_', ''); num = f'{int(lec):02d}' if lec.isdigit() else lec; search_dirs = ['$(COURSE_DIR)/docs/lectures', '$(COURSE_DIR)/lectures', 'docs/lectures', 'lectures']; matches = []; [matches.extend(glob.glob(f'{d}/lecture_{num}_notes_*.md')) for d in search_dirs if os.path.exists(d)]; sys.exit(subprocess.run(['$(PYTHON)', '-m', 'jupytext', '--to', 'ipynb', matches[0]]).returncode) if matches else print(f'No notes found for lecture {lec}')"
 
 # Synchronize all paired Markdown and Jupyter Notebooks in the workspace
 sync:
 	@echo "=========================================================="
 	@echo "Synchronizing all paired .md and .ipynb notes via Jupytext"
 	@echo "=========================================================="
-	@"$(PYTHON)" -c "import glob, subprocess; files = glob.glob('**/lectures/lecture_*_notes_*.md', recursive=True); [subprocess.run(['$(PYTHON)', '-m', 'jupytext', '--sync', f]) for f in files]"
+	@"$(PYTHON)" -c "import glob, subprocess, os; search_dirs = ['$(COURSE_DIR)/docs/lectures', '$(COURSE_DIR)/lectures', 'docs/lectures', 'lectures']; files = []; [files.extend(glob.glob(f'{d}/lecture_*_notes_*.md')) for d in search_dirs if os.path.exists(d)]; [subprocess.run(['$(PYTHON)', '-m', 'jupytext', '--sync', f]) for f in sorted(list(set(files)))]"
 
 # Publish/Upload compiled PDFs to GitHub Releases via gh CLI
 release:
 	@echo "=========================================================="
 	@echo "Publishing GitHub Release $(TAG) with compiled PDFs"
 	@echo "=========================================================="
-	@"$(PYTHON)" -c "import glob, subprocess; pdfs = sorted(glob.glob('**/lectures_pdf/lecture_*_notes_*.pdf', recursive=True)); cmd = ['gh', 'release', 'create', '$(TAG)'] + pdfs + ['-R', 'yellowlab9/cs231n-lecture-notes-generator', '--title', '$(TITLE)', '--notes', 'High-fidelity lecture study guides (14pt XeLaTeX PDFs) with slide captures.', '--verify-tag']; subprocess.run(cmd)"
+	@"$(PYTHON)" -c "import glob, subprocess, os; search_dirs = ['$(COURSE_DIR)/lectures_pdf', 'lectures_pdf']; pdfs = []; [pdfs.extend(glob.glob(f'{d}/lecture_*_notes_*.pdf')) for d in search_dirs if os.path.exists(d)]; pdfs = sorted(list(set(pdfs))); cmd = ['gh', 'release', 'create', '$(TAG)'] + pdfs + ['-R', 'yellowlab9/lecture-notes-stanford-cs231n-2025', '--title', '$(TITLE)', '--notes', 'High-fidelity lecture study guides (14pt XeLaTeX PDFs) with slide captures.', '--verify-tag']; subprocess.run(cmd)"
 
 # Clean up local environment
 clean:

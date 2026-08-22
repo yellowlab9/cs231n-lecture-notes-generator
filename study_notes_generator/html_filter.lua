@@ -9,9 +9,41 @@ local function resolve_img_path(src)
   return src:gsub("\\", "/")
 end
 
+-- Filter out web action badges (Colab, Shields.io, GitHub badges) from PDF
+function Link(el)
+  if el.target:find("colab.research.google.com") or el.target:find("shields.io") or el.target:find("raw.githubusercontent.com") or (el.target:find("releases/download") and el.target:find("%.pdf")) then
+    for _, child in ipairs(el.content) do
+      if child.t == "Image" and (child.src:find("colab%-badge") or child.src:find("shields%.io")) then
+        return {}
+      end
+    end
+  end
+  return el
+end
+
 function Image(el)
+  if el.src:find("colab%-badge") or el.src:find("shields%.io") then
+    return {}
+  end
   el.src = resolve_img_path(el.src)
   el.attributes['width'] = '75%'
+  return el
+end
+
+function Para(el)
+  local has_real_content = false
+  for _, item in ipairs(el.content) do
+    if item.t == "Str" and item.text:match("%S") and item.text ~= "&nbsp;" and item.text ~= " " then
+      has_real_content = true
+      break
+    elseif item.t == "Image" or item.t == "Link" or item.t == "Math" or item.t == "RawInline" then
+      has_real_content = true
+      break
+    end
+  end
+  if not has_real_content then
+    return {}
+  end
   return el
 end
 

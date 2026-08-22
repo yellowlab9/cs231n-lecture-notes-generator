@@ -81,7 +81,7 @@ def get_sentence_timestamp(cleaned_sentence, original_chunk, score_cutoff=50):
     estimated_time = segment_start + (segment_duration * progress)
     return estimated_time
 
-def generate_study_guide(output_path, transcript_chunks, slides_data, model_name, fuzzy_score_threshold=50, llm_retries=3, llm_retry_delay=5, is_creator_subtitle=False, img_width="75%", doc_title=None, fontsize="14pt"):
+def generate_study_guide(output_path, transcript_chunks, slides_data, model_name, fuzzy_score_threshold=50, llm_retries=3, llm_retry_delay=5, is_creator_subtitle=False, img_width="75%", doc_title=None, fontsize="14pt", doc_slug=None):
     """
     Generates and saves the final Markdown study guide.
     Guarantees slides are placed strictly BETWEEN complete sentences,
@@ -89,6 +89,9 @@ def generate_study_guide(output_path, transcript_chunks, slides_data, model_name
     """
     log("\nGenerating notes...", always=True)
     ensure_nltk_punkt()
+
+    if not doc_slug:
+        doc_slug = os.path.splitext(os.path.basename(output_path))[0]
 
     # Format percentage width string cleanly (e.g. 60 or "60" or "60%" -> "60%")
     width_clean = str(img_width).strip().rstrip('%')
@@ -185,6 +188,13 @@ def generate_study_guide(output_path, transcript_chunks, slides_data, model_name
     ]
     if doc_title:
         notes.append(f"<!-- #region -->\n# {doc_title}\n<!-- #endregion -->\n\n")
+        if doc_slug:
+            colab_badge = f"[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/docs/lectures/{doc_slug}.ipynb)"
+            ipynb_badge = f"[![Download .ipynb](https://img.shields.io/badge/Download-.ipynb-F37626?logo=jupyter&logoColor=white)](https://raw.githubusercontent.com/yellowlab9/lecture-notes-stanford-cs231n-2025/master/docs/lectures/{doc_slug}.ipynb)"
+            pdf_badge = f"[![Download 14pt PDF](https://img.shields.io/badge/Download-14pt%20PDF-red?logo=adobeacrobatreader)](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/releases/download/v2.0.0/{doc_slug}.pdf)"
+            github_badge = f"[![View on GitHub](https://img.shields.io/badge/View%20on-GitHub-black?logo=github)](https://github.com/yellowlab9/lecture-notes-stanford-cs231n-2025/blob/master/docs/lectures/{doc_slug}.ipynb)"
+            banner = f"{colab_badge} &nbsp; {ipynb_badge} &nbsp; {pdf_badge} &nbsp; {github_badge}\n\n"
+            notes.append(banner)
 
     current_p_sentences = []
     in_region = False

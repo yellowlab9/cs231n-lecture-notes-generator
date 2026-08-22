@@ -76,8 +76,12 @@ def main():
 
     course_dir = args.playlist_dir or default_playlist_dir
 
-    # Directory Structure under course_dir
-    LECTURES_DIR = os.path.join(course_dir, "lectures")
+    # Directory Structure under course_dir (supports both docs/lectures and lectures)
+    if os.path.exists(os.path.join(course_dir, "docs", "lectures")) or os.path.exists(os.path.join(course_dir, "docs")):
+        LECTURES_DIR = os.path.join(course_dir, "docs", "lectures")
+    else:
+        LECTURES_DIR = os.path.join(course_dir, "lectures")
+
     SLIDE_DIR = os.path.join(LECTURES_DIR, f"lecture_{args.index:02d}_slides")
     os.makedirs(SLIDE_DIR, exist_ok=True)
 
@@ -117,7 +121,8 @@ def main():
         is_creator_subtitle=is_creator_subtitle,
         img_width=args.img_width,
         doc_title=video_title,
-        fontsize=args.fontsize
+        fontsize=args.fontsize,
+        doc_slug=base_name
     )
 
     utils.log("Complete!", always=True)
